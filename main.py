@@ -10,6 +10,9 @@ import dataset
 import fastflow
 import utils
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 def build_train_data_loader(args, config):
     train_dataset = dataset.MVTecDataset(
@@ -85,6 +88,7 @@ def train_one_epoch(dataloader, model, optimizer, epoch):
                     epoch + 1, step + 1, loss_meter.val, loss_meter.avg
                 )
             )
+    return loss_meter.avg
 
 
 def eval_once(dataloader, model):
@@ -100,6 +104,8 @@ def eval_once(dataloader, model):
         auroc_metric.update((outputs, targets))
     auroc = auroc_metric.compute()
     print("AUROC: {}".format(auroc))
+    ret = {'auroc': auroc}
+    return ret
 
 
 def train(args):
@@ -117,10 +123,21 @@ def train(args):
     test_dataloader = build_test_data_loader(args, config)
     model.cuda()
 
+    loss_history = []
+    val_x = []
+    auroc_history = []
+    fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(20,20))
+
     for epoch in range(const.NUM_EPOCHS):
-        train_one_epoch(train_dataloader, model, optimizer, epoch)
+        loss = train_one_epoch(train_dataloader, model, optimizer, epoch)
+        loss_history.append( loss )
         if (epoch + 1) % const.EVAL_INTERVAL == 0:
-            eval_once(test_dataloader, model)
+            ret = eval_once(test_dataloader, model)
+            val_x.append(epoch)
+            auroc_history.append(ret['auroc'])
+            ax2.set_title("AUROC on validation")
+            ax2.plot(val_x, auroc_history, 'g-')
+
         if (epoch + 1) % const.CHECKPOINT_INTERVAL == 0:
             torch.save(
                 {
@@ -130,6 +147,11 @@ def train(args):
                 },
                 os.path.join(checkpoint_dir, "%d.pt" % epoch),
             )
+            ax1.set_title("training loss")
+            ax1.plot(loss_history, 'r-')
+            plt.savefig("training history(temp).png")
+    
+    plt.savefig("training history.png")
 
 
 def evaluate(args):
