@@ -1,0 +1,73 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Train MVtecAD",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/resnet18.yaml",
+                "--data", "C:\\Users\\YSH\\OneDrive - ysh-pleiony\\OneDrive - Pleiony,Inc\\data\\public\\mvtec_anomaly_detection",
+                "-cat", "bottle"
+            ]
+        },
+        {
+            "name": "Python: Eval MVtecAD",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/resnet18.yaml",
+                "--data", "C:\\Users\\YSH\\OneDrive - ysh-pleiony\\OneDrive - Pleiony,Inc\\data\\public\\mvtec_anomaly_detection",
+                "-cat", "bottle",
+                "--eval",
+                "-ckpt", "_fastflow_experiment_checkpoints/exp7/499.pt"
+            ]
+        },
+        {
+            "name": "Python: Train glotec",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/resnet18.yaml",
+                "--device", "0",
+                "--data", 
+                //"/home/ysh/tensorrt/data/glotec/merged/220322_10_1min/00"
+                "/home/ysh/tensorrt/data/glotec/train_1hour/220322_10"
+            ]
+        },
+        {
+            "name": "Python: Eval glotec",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/resnet18.yaml",
+                "--data", "/home/ysh/tensorrt/data/glotec/220321_13/01",
+                "--eval",
+                "-ckpt", "_fastflow_experiment_checkpoints/glotec-resnet18-4K-step8-hidden1.0/299.pt"
+            ]
+        }
+    ]
+}

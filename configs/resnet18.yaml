@@ -1,4 +1,4 @@
-input_size: 256
+input_size: [4096, 4000]
 backbone_name: resnet18
 flow_step: 8
 hidden_ratio: 1.0

@@ -50,7 +50,7 @@ class MVTecDataset(torch.utils.data.Dataset):
         return len(self.image_files)
 
 class GlotecDataset(torch.utils.data.Dataset):
-    def __init__(self, root, category, input_size, is_train=True):
+    def __init__(self, root, input_size, is_train=True):
         self.image_transform = transforms.Compose(
             [
                 transforms.Resize(input_size),
@@ -60,7 +60,7 @@ class GlotecDataset(torch.utils.data.Dataset):
         )
         if is_train:
             file_list = []
-            for dirpath, dirs, files in os.walk(os.path.join(root, category)):
+            for dirpath, dirs, files in os.walk(root):
                 dirs.sort()
                 files.sort()
                 file_list.extend([
@@ -70,7 +70,7 @@ class GlotecDataset(torch.utils.data.Dataset):
             self.image_files = file_list
         else:
             file_list = []
-            for dirpath, dirs, files in os.walk(os.path.join(root, category)):
+            for dirpath, dirs, files in os.walk(root):
                 dirs.sort()
                 files.sort()
                 file_list.extend([
@@ -91,8 +91,8 @@ class GlotecDataset(torch.utils.data.Dataset):
         image_file = self.image_files[index]
         image = Image.open(image_file)
         image = self.image_transform(image)
-        # if self.is_train:
-        #     return image
+        if self.is_train:
+            return image
         # else:
         #     if os.path.dirname(image_file).endswith("good"):
         #         target = torch.zeros([1, image.shape[-2], image.shape[-1]])
@@ -102,7 +102,7 @@ class GlotecDataset(torch.utils.data.Dataset):
         #         )
         #         target = self.target_transform(target)
         #     return image, target
-        return image
+        return image, image_file
 
     def __len__(self):
         return len(self.image_files)

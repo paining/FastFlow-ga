@@ -3,3 +3,4 @@ _fastflow_experiment_checkpoints
 __pycache__
 venv
 *.png
+result/

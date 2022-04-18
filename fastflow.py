@@ -50,6 +50,8 @@ class FastFlow(nn.Module):
             backbone_name in const.SUPPORTED_BACKBONES
         ), "backbone_name must be one of {}".format(const.SUPPORTED_BACKBONES)
 
+        if isinstance(input_size, int): input_size = [input_size, input_size]
+
         if backbone_name in [const.BACKBONE_CAIT, const.BACKBONE_DEIT]:
             self.feature_extractor = timm.create_model(backbone_name, pretrained=True)
             channels = [768]
@@ -70,7 +72,7 @@ class FastFlow(nn.Module):
             for in_channels, scale in zip(channels, scales):
                 self.norms.append(
                     nn.LayerNorm(
-                        [in_channels, int(input_size / scale), int(input_size / scale)],
+                        [in_channels, int(input_size[0] / scale), int(input_size[1] / scale)],
                         elementwise_affine=True,
                     )
                 )
@@ -82,7 +84,7 @@ class FastFlow(nn.Module):
         for in_channels, scale in zip(channels, scales):
             self.nf_flows.append(
                 nf_fast_flow(
-                    [in_channels, int(input_size / scale), int(input_size / scale)],
+                    [in_channels, int(input_size[1] / scale), int(input_size[0] / scale)],
                     conv3x3_only=conv3x3_only,
                     hidden_ratio=hidden_ratio,
                     flow_steps=flow_steps,
@@ -115,7 +117,7 @@ class FastFlow(nn.Module):
             x = x[:, 2:, :]
             N, _, C = x.shape
             x = x.permute(0, 2, 1)
-            x = x.reshape(N, C, self.input_size // 16, self.input_size // 16)
+            x = x.reshape(N, C, self.input_size[1] // 16, self.input_size[0] // 16)
             features = [x]
         elif isinstance(self.feature_extractor, timm.models.cait.Cait):
             x = self.feature_extractor.patch_embed(x)
@@ -126,7 +128,7 @@ class FastFlow(nn.Module):
             N, _, C = x.shape
             x = self.feature_extractor.norm(x)
             x = x.permute(0, 2, 1)
-            x = x.reshape(N, C, self.input_size // 16, self.input_size // 16)
+            x = x.reshape(N, C, self.input_size[1] // 16, self.input_size[0] // 16)
             features = [x]
         else:
             features = self.feature_extractor(x)
@@ -149,7 +151,7 @@ class FastFlow(nn.Module):
                 prob = torch.exp(log_prob)
                 a_map = F.interpolate(
                     -prob,
-                    size=[self.input_size, self.input_size],
+                    size=[self.input_size[1], self.input_size[0]],
                     mode="bilinear",
                     align_corners=False,
                 )
