@@ -17,9 +17,14 @@ import cv2
 
 
 def build_train_data_loader(args, config):
-    train_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
+    # train_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
+    #     root=args.data,
+    #     # category=args.category,
+    #     input_size=config["input_size"],
+    #     is_train=True,
+    # )
+    train_dataset = dataset.DACDataset(
         root=args.data,
-        # category=args.category,
         input_size=config["input_size"],
         is_train=True,
     )
@@ -33,9 +38,14 @@ def build_train_data_loader(args, config):
 
 
 def build_test_data_loader(args, config):
-    test_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
+    # test_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
+    #     root=args.data,
+    #     # category=args.category,
+    #     input_size=config["input_size"],
+    #     is_train=False,
+    # )
+    test_dataset = dataset.DACDataset(
         root=args.data,
-        # category=args.category,
         input_size=config["input_size"],
         is_train=False,
     )
