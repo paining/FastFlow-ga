@@ -15,6 +15,10 @@ import numpy as np
 from tqdm import tqdm
 import cv2
 
+from torchmetrics.classification import BinaryROC
+import logging
+logger = logging.getLogger(__name__)
+
 
 def build_train_data_loader(args, config):
     # train_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
@@ -111,23 +115,45 @@ def train_one_epoch(dataloader, model, optimizer, epoch):
 
 def eval_once(dataloader, model):
     model.eval()
-    auroc_metric = metrics.ROC_AUC()
-    for data, targets in dataloader:
+    pix_auroc_metric = metrics.ROC_AUC()
+    img_auroc_metric = metrics.ROC_AUC()
+    for data, targets, _ in dataloader:
         data, targets = data.cuda(), targets.cuda()
         with torch.no_grad():
             ret = model(data)
         outputs = ret["anomaly_map"].cpu().detach()
         outputs = outputs.flatten()
         targets = targets.flatten()
-        auroc_metric.update((outputs, targets))
-    auroc = auroc_metric.compute()
-    print("AUROC: {}".format(auroc))
-    ret = {'auroc': auroc}
+        pix_auroc_metric.update((outputs, targets))
+        img_auroc_metric.update((outputs.max(), targets.max()))
+    pix_auroc = pix_auroc_metric.compute()
+    img_auroc = img_auroc_metric.compute()
+    logging.info("pixel AUROC: {}, image AUROC: {}".format(pix_auroc, img_auroc))
+    ret = {'auroc': pix_auroc}
     return ret
+
+def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
+    model.eval()
+    roc = BinaryROC()
+    outputs = []
+    targets = []
+    for data, target, filename in tqdm(dataloader, dynamic_ncols=True):
+        data = data.cuda()
+        with torch.no_grad():
+            ret = model(data)
+        output = ret["anomaly_map"].cpu().detach()
+        outputs.append(output.flatten())
+        targets.append(target.flatten())
+    outputs = torch.stack(outputs).cuda()
+    targets = torch.stack(targets).cuda()
+    fpr, tpr, thresholds = roc(outputs, targets)
+    threshold = thresholds[torch.where(tpr == torch.max(tpr[fpr < 0.01]))]
+
+    return
 
 def eval_once_without_ground_truth(dataloader, model, result_path, device):
     model.eval()
-    for data, filename in tqdm(dataloader, dynamic_ncols=True):
+    for data, _, filename in tqdm(dataloader, dynamic_ncols=True):
         data = data.to(device)
         with torch.no_grad():
             ret = model(data)
@@ -198,9 +224,9 @@ def train(args):
                 },
                 os.path.join(checkpoint_dir, "%d.pt" % epoch),
             )
-            ax1.set_title("training loss")
-            ax1.plot(loss_history, 'r-')
-            plt.savefig("training history(temp).png")
+        ax1.set_title("training loss")
+        ax1.plot(loss_history, 'r-')
+        plt.savefig("training history(temp).png")
     
     plt.savefig("training history.png")
 
@@ -219,11 +245,12 @@ def evaluate(args):
         "result", os.path.splitext(os.path.basename(args.config))[0]
     )
     os.makedirs(result_path, exist_ok=True)
-    device = torch.device("cuda:1")
+    device = torch.device("cuda")
     model.to(device)
-    #model.cuda()
-    #eval_once(test_dataloader, model)
-    eval_once_without_ground_truth(test_dataloader, model, result_path, device)
+    # model.cuda()
+    # eval_once(test_dataloader, model)
+    # eval_once_without_ground_truth(test_dataloader, model, result_path, device)
+    calculate_tpr_fpr_with_f1_score(test_dataloader, model, result_path)
 
 
 def parse_args():

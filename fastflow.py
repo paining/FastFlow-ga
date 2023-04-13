@@ -72,7 +72,7 @@ class FastFlow(nn.Module):
             for in_channels, scale in zip(channels, scales):
                 self.norms.append(
                     nn.LayerNorm(
-                        [in_channels, int(input_size[0] / scale), int(input_size[1] / scale)],
+                        [in_channels, int(input_size[1] / scale), int(input_size[0] / scale)],
                         elementwise_affine=True,
                     )
                 )

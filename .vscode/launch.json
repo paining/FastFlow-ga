@@ -83,5 +83,21 @@
                 "../.data/dac/20230404/Silver/train_augmentation/"
             ]
         },
+        {
+            "name": "Python: Test DAC",
+            "type": "python",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/resnet18.yaml",
+                "--device", "0",
+                "--data", 
+                "../.data/dac/20230404/Silver/train_augmentation/",
+                "--eval",
+                "-ckpt", "_fastflow_experiment_checkpoints/resnet18/49.pt"
+            ]
+        },
     ]
 }

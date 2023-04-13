@@ -7,6 +7,9 @@ from PIL import Image
 from torchvision import transforms
 from image_crop import image_crop
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class MVTecDataset(torch.utils.data.Dataset):
     def __init__(self, root, category, input_size, is_train=True):
@@ -151,11 +154,16 @@ class DACDataset(torch.utils.data.Dataset):
             if os.path.dirname(image_file).endswith("good"):
                 target = torch.zeros([1, image.shape[-2], image.shape[-1]])
             else:
-                target = Image.open(
-                    image_file.replace('\\', '/').replace("/test/", "/ground_truth/").replace(".bmp", ".png")
-                )
-                target = self.target_transform(target)
-            return image, target
+                try:
+                    target = Image.open(
+                        image_file.replace('\\', '/').replace("/test/", "/ground_truth/").replace(".bmp", ".png")
+                    ).convert('1')
+                    target = self.target_transform(target)
+                except FileNotFoundError as e:
+                    logger.exception(e)
+                    target = torch.zeros_like(image, dtype=torch.int32)
+            return image, target, image_file
+            # return image, image_file
 
     def __len__(self):
         return len(self.image_files)
