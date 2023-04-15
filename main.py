@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 import torch
 import yaml
@@ -15,9 +16,12 @@ import numpy as np
 from tqdm import tqdm
 import cv2
 
-from torchmetrics.classification import BinaryROC
+import imageutils
+from image_crop import image_crop
+from torchmetrics.classification import BinaryROC, BinaryAUROC
 import logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def build_train_data_loader(args, config):
@@ -135,20 +139,105 @@ def eval_once(dataloader, model):
 def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     model.eval()
     roc = BinaryROC()
+    auroc = BinaryAUROC()
     outputs = []
     targets = []
-    for data, target, filename in tqdm(dataloader, dynamic_ncols=True):
+    img_ad = []
+    img_gt = []
+    for data, target, filename in tqdm(dataloader, dynamic_ncols=True, desc="finding threshold"):
         data = data.cuda()
         with torch.no_grad():
             ret = model(data)
         output = ret["anomaly_map"].cpu().detach()
+        output = 1 + output
+
+        # croping image
+        ori_img = cv2.imread(filename[0])
+        l, r, w = image_crop(ori_img, 50)
+        cropsize = (w // 32) * 32
+        l = l + (w-cropsize) // 2
+
+        output = output.reshape(output.shape[-2], output.shape[-1])
+        target = target.reshape(target.shape[-2:])
+        output = output[0:416, l:l+cropsize]
+        target = target[0:416, l:l+cropsize]
+        
         outputs.append(output.flatten())
         targets.append(target.flatten())
+        img_ad.append( output.max() )
+        img_gt.append( 1 if target.max() > 0 else 0 )
     outputs = torch.stack(outputs).cuda()
     targets = torch.stack(targets).cuda()
-    fpr, tpr, thresholds = roc(outputs, targets)
-    threshold = thresholds[torch.where(tpr == torch.max(tpr[fpr < 0.01]))]
+    img_ad = torch.stack(img_ad).cuda()
+    img_gt = torch.tensor(img_gt).cuda()
 
+    # """Get Threshold from fpr < 0.01"""
+    # fpr, tpr, thresholds = roc(img_ad, img_gt)
+    # threshold = thresholds[fpr < 0.01][-1].item()
+    # logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
+    # logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
+
+    # fpr, tpr, thresholds = roc(outputs, targets)
+    # threshold = thresholds[fpr < 0.01][-1].item()
+    # logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
+    # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
+
+    """Get Threshold from tpr > 0.9"""
+    fpr, tpr, thresholds = roc(outputs, targets)
+    tpr_idx = torch.where(tpr > 0.9)[0]
+    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
+    threshold = thresholds[thr_idx].item()
+    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
+
+    fpr, tpr, thresholds = roc(img_ad, img_gt)
+    tpr_idx = torch.where(tpr > 0.9)[0]
+    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
+    threshold = thresholds[thr_idx].item()
+    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
+
+    os.makedirs(os.path.join(result_path, "fp"), exist_ok=True)
+    os.makedirs(os.path.join(result_path, "fn"), exist_ok=True)
+
+    for data, _, filename in tqdm(dataloader, dynamic_ncols=True, desc="Saving result image"):
+        data = data.cuda()
+        boundary = np.zeros(data.shape[-2:], dtype=np.uint8)
+        with torch.no_grad():
+            ret = model(data)
+        outputs = ret["anomaly_map"].cpu().detach().numpy()
+        outputs = outputs.reshape(outputs.shape[-2], outputs.shape[-1])
+        outputs = 1 + outputs
+        boundary[outputs >= threshold] = 255
+        boundary = (
+            cv2.morphologyEx(
+                boundary, 
+                cv2.MORPH_DILATE, 
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+            ) - boundary
+        )
+
+        # croping image
+        ori_img = cv2.imread(filename[0])
+        l, r, w = image_crop(ori_img, 50)
+        cropsize = (w // 32) * 32
+        l = l + (w-cropsize) // 2
+        ori_img = ori_img[0:416, l:l+cropsize, :]
+        outputs = outputs[0:416, l:l+cropsize]
+        boundary = boundary[0:416, l:l+cropsize]
+
+        ori_img[boundary == 255] = (255, 0, 0)
+        disp = imageutils.draw_heatmap_with_colorbar(outputs, ori_img, figsize=(50,10), vrange=(0, 1))
+
+        savefile = "_".join(filename[0].rsplit("/", maxsplit=2)[-2:])
+        ad_img = outputs.max()
+        if ad_img >= threshold and os.path.basename(os.path.dirname(filename[0])) == "good":
+            savepath = os.path.join(result_path, "fp", savefile)
+        elif ad_img < threshold and os.path.basename(os.path.dirname(filename[0])) == "etc":
+            savepath = os.path.join(result_path, "fn", savefile)
+        else:
+            savepath = os.path.join(result_path, savefile)
+        cv2.imwrite(savepath, disp[:,:,::-1])
     return
 
 def eval_once_without_ground_truth(dataloader, model, result_path, device):
@@ -277,7 +366,13 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    logging.basicConfig()
+    handler = logging.FileHandler("result/log.log")
+    formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
+    handler.setFormatter(formatter)
+    logging.getLogger().addHandler(handler)
     args = parse_args()
+    logger.info(sys.argv)
     if args.eval:
         evaluate(args)
     else:

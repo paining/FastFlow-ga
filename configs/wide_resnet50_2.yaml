@@ -1,4 +1,4 @@
-input_size: [4096, 4000]
+input_size: [4096, 800]
 backbone_name: wide_resnet50_2
 flow_step: 6
 hidden_ratio: 0.25

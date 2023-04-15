@@ -27,23 +27,30 @@ def image_crop(img:np.ndarray, criterion=10):
 
 
     idx = len(mean)//2
+    lastdiff = mean[idx + half] - mean[idx - half]
     while idx < len(mean) - half:
-        if (mean[idx + half] - mean[idx - half]) > criterion:
+        # if (mean[idx + half] - mean[idx - half]) > criterion:
+        diff = mean[idx + half] - mean[idx - half]
+        if diff - lastdiff >= 10:
             r_idx = idx
             break
 
         idx += 1
+        lastdiff = diff
     else:
         r_idx = -1 # print('경계를 찾을 수 없음')
 
     cnt = 0
     idx = len(mean)//2
-
+    lastdiff = mean[idx - half] - mean[idx + half]
     while idx > half:
-        if (mean[idx - half] - mean[idx + half]) > criterion:
+        # if (mean[idx - half] - mean[idx + half]) > criterion:
+        diff = mean[idx - half] - mean[idx + half]
+        if diff - lastdiff >= 10:
             l_idx = idx
             break
         idx -= 1
+        lastdiff = diff
     else:
         l_idx = -1 # print('경계를 찾을 수 없음')
 
