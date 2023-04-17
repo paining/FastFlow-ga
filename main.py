@@ -129,10 +129,11 @@ def eval_once(dataloader, model):
         outputs = outputs.flatten()
         targets = targets.flatten()
         pix_auroc_metric.update((outputs, targets))
-        img_auroc_metric.update((outputs.max(), targets.max()))
+        # img_auroc_metric.update((outputs.max(), targets.max()))
     pix_auroc = pix_auroc_metric.compute()
-    img_auroc = img_auroc_metric.compute()
-    logging.info("pixel AUROC: {}, image AUROC: {}".format(pix_auroc, img_auroc))
+    # img_auroc = img_auroc_metric.compute()
+    # logging.info("pixel AUROC: {}, image AUROC: {}".format(pix_auroc, img_auroc))
+    logging.info("pixel AUROC: {}".format(pix_auroc))
     ret = {'auroc': pix_auroc}
     return ret
 
