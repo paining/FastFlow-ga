@@ -31,7 +31,7 @@ def image_crop(img:np.ndarray, criterion=10):
     while idx < len(mean) - half:
         # if (mean[idx + half] - mean[idx - half]) > criterion:
         diff = mean[idx + half] - mean[idx - half]
-        if diff - lastdiff >= 10:
+        if diff - lastdiff >= 15:
             r_idx = idx
             break
 
@@ -46,7 +46,7 @@ def image_crop(img:np.ndarray, criterion=10):
     while idx > half:
         # if (mean[idx - half] - mean[idx + half]) > criterion:
         diff = mean[idx - half] - mean[idx + half]
-        if diff - lastdiff >= 10:
+        if diff - lastdiff >= 15:
             l_idx = idx
             break
         idx -= 1

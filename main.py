@@ -214,24 +214,40 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     # logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
     # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
 
-    """Get Threshold from tpr > 0.9"""
+    # """Get Threshold from Image tpr > 0.9"""
+    # fpr, tpr, thresholds = roc(outputs, targets)
+    # tpr_idx = torch.where(tpr > 0.9)[0]
+    # thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
+    # threshold = thresholds[thr_idx].item()
+    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
+
+    # fpr, tpr, thresholds = roc(img_ad, img_gt)
+    # tpr_idx = torch.where(tpr > 0.9)[0]
+    # thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
+    # threshold = thresholds[thr_idx].item()
+    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    # logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
+
+    """Get Threshold from Image fpr < 0.1"""
     fpr, tpr, thresholds = roc(outputs, targets)
-    tpr_idx = torch.where(tpr > 0.9)[0]
-    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
+    fpr_idx = torch.where(fpr < 0.1)[0]
+    thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
     threshold = thresholds[thr_idx].item()
     logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
     logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
 
     fpr, tpr, thresholds = roc(img_ad, img_gt)
-    tpr_idx = torch.where(tpr > 0.9)[0]
-    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
+    fpr_idx = torch.where(fpr < 0.1)[0]
+    thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
     threshold = thresholds[thr_idx].item()
     logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
     logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
 
-    os.makedirs(os.path.join(result_path, "fp"), exist_ok=True)
-    os.makedirs(os.path.join(result_path, "fn"), exist_ok=True)
-
+    os.makedirs(os.path.join(result_path, "TP"), exist_ok=True)
+    os.makedirs(os.path.join(result_path, "FP"), exist_ok=True)
+    os.makedirs(os.path.join(result_path, "TN"), exist_ok=True)
+    os.makedirs(os.path.join(result_path, "FN"), exist_ok=True)
     for data, _, filename in tqdm(dataloader, dynamic_ncols=True, desc="Saving result image"):
         data = data.cuda()
         boundary = np.zeros(data.shape[-2:], dtype=np.uint8)
@@ -263,10 +279,16 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
 
         savefile = "_".join(filename[0].rsplit("/", maxsplit=2)[-2:])
         ad_img = outputs.max()
-        if ad_img >= threshold and os.path.basename(os.path.dirname(filename[0])) == "good":
-            savepath = os.path.join(result_path, "fp", savefile)
-        elif ad_img < threshold and os.path.basename(os.path.dirname(filename[0])) == "etc":
-            savepath = os.path.join(result_path, "fn", savefile)
+        if ad_img >= threshold:
+            if os.path.basename(os.path.dirname(filename[0])) == "good":
+                savepath = os.path.join(result_path, "FP", savefile)
+            else:
+                savepath = os.path.join(result_path, "TP", savefile)
+        elif ad_img < threshold:
+            if os.path.basename(os.path.dirname(filename[0])) == "good":
+                savepath = os.path.join(result_path, "TN", savefile)
+            else:
+                savepath = os.path.join(result_path, "FN", savefile)
         else:
             savepath = os.path.join(result_path, savefile)
         cv2.imwrite(savepath, disp[:,:,::-1])
