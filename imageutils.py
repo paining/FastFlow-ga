@@ -48,9 +48,9 @@ def draw_heatmap_with_colorbar(
     return arr[:,:,:3]
     
 
-def draw_heatmap_with_colorbar(
+def draw_heatmap_with_colorbar_with_image(
     scores:np.ndarray, 
-    image:np.ndarray=None, 
+    image:np.ndarray, 
     alpha=0.2, 
     figsize=(15,15), 
     cmap='jet',
@@ -58,12 +58,13 @@ def draw_heatmap_with_colorbar(
     savepath=None,
 ):
     fig = plt.figure(figsize=figsize)
-    ax = fig.subplots()
+    ax = fig.subplots(2,1,1)
+    ax.imshow(image)
+    ax = fig.subplots(2,1,2)
     vmin, vmax = vrange if vrange is not None else (scores.min(), scores.max())
     im = ax.imshow(scores, cmap=cmap, vmin=vmin, vmax=vmax)
-    if image is not None:
-        ax.imshow(image)
-        ax.imshow(scores, alpha=alpha, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.imshow(image)
+    ax.imshow(scores, alpha=alpha, cmap=cmap, vmin=vmin, vmax=vmax)
     ax.set_title("anomaly score map")
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size=0.1, pad=0.05)

@@ -275,7 +275,7 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
         boundary = boundary[0:416, l:l+cropsize]
 
         ori_img[boundary == 255] = (255, 0, 0)
-        disp = imageutils.draw_heatmap_with_colorbar(outputs, ori_img, figsize=(50,10), vrange=(0, 1))
+        disp = imageutils.draw_heatmap_with_colorbar_with_image(outputs, ori_img, figsize=(50,20), vrange=(0, 1))
 
         savefile = "_".join(filename[0].rsplit("/", maxsplit=2)[-2:])
         ad_img = outputs.max()
