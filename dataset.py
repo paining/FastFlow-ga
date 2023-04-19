@@ -146,6 +146,7 @@ class DACDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         image_file = self.image_files[index]
         image = Image.open(image_file).convert('RGB')
+        image = image.crop((0, 0, self.input_size[0], self.input_size[1]))
         # l, r, w = image_crop(np.asarray(image), 30)
         image = self.image_transform(image)
         if self.is_train:
@@ -158,6 +159,7 @@ class DACDataset(torch.utils.data.Dataset):
                     target = Image.open(
                         image_file.replace('\\', '/').replace("/test/", "/ground_truth/").replace(".bmp", ".png")
                     ).convert('1')
+                    target = target.crop((0, 0, self.input_size[0], self.input_size[1]))
                     target = self.target_transform(target)
                 except FileNotFoundError as e:
                     logger.exception(e)

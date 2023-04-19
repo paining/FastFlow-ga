@@ -117,24 +117,55 @@ def train_one_epoch(dataloader, model, optimizer, epoch):
     return loss_meter.avg
 
 
+# def eval_once(dataloader, model):
+#     model.eval()
+#     pix_auroc_metric = metrics.ROC_AUC()
+#     img_auroc_metric = metrics.ROC_AUC()
+#     for data, targets, _ in dataloader:
+#         data, targets = data.cuda(), targets.cuda()
+#         with torch.no_grad():
+#             ret = model(data)
+#         outputs = ret["anomaly_map"].cpu().detach()
+#         outputs = outputs.flatten()
+#         targets = targets.flatten()
+#         pix_auroc_metric.update((outputs, targets))
+#         img_auroc_metric.update((outputs.max().reshape(-1,1), targets.max().reshape(-1,1)))
+#     pix_auroc = pix_auroc_metric.compute()
+#     img_auroc = img_auroc_metric.compute()
+#     logger.info("pixel AUROC: {}, image AUROC: {}".format(pix_auroc, img_auroc))
+#     # logger.info("pixel AUROC: {}".format(pix_auroc))
+#     ret = {'auroc': pix_auroc, 'img_auroc':img_auroc}
+#     return ret
+
+
 def eval_once(dataloader, model):
     model.eval()
-    pix_auroc_metric = metrics.ROC_AUC()
-    img_auroc_metric = metrics.ROC_AUC()
-    for data, targets, _ in dataloader:
+    pix_auroc_metric = BinaryAUROC()
+    img_auroc_metric = BinaryAUROC()
+    pix_ad = []
+    pix_gt = []
+    img_ad = []
+    img_gt = []
+    for data, targets, _ in tqdm(dataloader, desc="Eval"):
         data, targets = data.cuda(), targets.cuda()
         with torch.no_grad():
             ret = model(data)
         outputs = ret["anomaly_map"].cpu().detach()
         outputs = outputs.flatten()
         targets = targets.flatten()
-        pix_auroc_metric.update((outputs, targets))
-        # img_auroc_metric.update((outputs.max(), targets.max()))
-    pix_auroc = pix_auroc_metric.compute()
-    # img_auroc = img_auroc_metric.compute()
-    # logging.info("pixel AUROC: {}, image AUROC: {}".format(pix_auroc, img_auroc))
-    logging.info("pixel AUROC: {}".format(pix_auroc))
-    ret = {'auroc': pix_auroc}
+        pix_ad.append(outputs)
+        pix_gt.append(targets)
+        img_ad.append(outputs.max())
+        img_gt.append(targets.max())
+    pix_ad = torch.stack(pix_ad).cuda()
+    pix_gt = torch.stack(pix_gt).cuda()
+    img_ad = torch.stack(img_ad).cuda()
+    img_gt = torch.stack(img_gt).cuda()
+    pix_auroc = pix_auroc_metric(pix_ad.flatten(), pix_gt.flatten()).item()
+    img_auroc = img_auroc_metric(img_ad.flatten(), img_gt.flatten()).item()
+    # logger.info("pixel AUROC: {}".format(pix_auroc))
+    ret = {'auroc': pix_auroc, 'img_auroc':img_auroc}
+    logger.info("pixel AUROC: {}, image AUROC: {}".format(ret['auroc'], ret['img_auroc']))
     return ret
 
 def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
@@ -167,8 +198,8 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
         targets.append(target.flatten())
         img_ad.append( output.max() )
         img_gt.append( 1 if target.max() > 0 else 0 )
-    outputs = torch.stack(outputs).cuda()
-    targets = torch.stack(targets).cuda()
+    outputs = torch.concat(outputs).cuda()
+    targets = torch.concat(targets).cuda()
     img_ad = torch.stack(img_ad).cuda()
     img_gt = torch.tensor(img_gt).cuda()
 
@@ -282,6 +313,8 @@ def train(args):
     config = yaml.safe_load(open(args.config, "r"))
     model = build_model(config)
     optimizer = build_optimizer(model)
+
+    logger.info(f"config : {config}")
     
     if isinstance(config["input_size"], int): 
         config["input_size"] = [config["input_size"], config["input_size"]]
@@ -293,6 +326,7 @@ def train(args):
     loss_history = []
     val_x = []
     auroc_history = []
+    img_auroc_history = []
     fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(20,20))
 
     for epoch in range(const.NUM_EPOCHS):
@@ -302,8 +336,12 @@ def train(args):
             ret = eval_once(test_dataloader, model)
             val_x.append(epoch)
             auroc_history.append(ret['auroc'])
+            img_auroc_history.append(ret['img_auroc'])
+            ax2.clear()
             ax2.set_title("AUROC on validation")
-            ax2.plot(val_x, auroc_history, 'g-')
+            ax2.plot(val_x, auroc_history, 'g-', label="pixel")
+            ax2.plot(val_x, img_auroc_history, 'b-', label="image")
+            ax2.legend()
 
         if (epoch + 1) % const.CHECKPOINT_INTERVAL == 0:
             torch.save(
@@ -314,6 +352,7 @@ def train(args):
                 },
                 os.path.join(checkpoint_dir, "%d.pt" % epoch),
             )
+        ax1.clear()
         ax1.set_title("training loss")
         ax1.plot(loss_history, 'r-')
         plt.savefig("training history(temp).png")
@@ -368,12 +407,13 @@ def parse_args():
 
 if __name__ == "__main__":
     logging.basicConfig()
+    os.makedirs("result", exist_ok=True)
     handler = logging.FileHandler("result/log.log")
     formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
     handler.setFormatter(formatter)
     logging.getLogger().addHandler(handler)
     args = parse_args()
-    logger.info(sys.argv)
+    logger.info(" ".join(sys.argv))
     if args.eval:
         evaluate(args)
     else:
