@@ -58,9 +58,8 @@ def draw_heatmap_with_colorbar_with_image(
     savepath=None,
 ):
     fig = plt.figure(figsize=figsize)
-    ax = fig.subplots(2,1,1)
-    ax.imshow(image)
-    ax = fig.subplots(2,1,2)
+    ax_img, ax = fig.subplots(2,1)
+    ax_img.imshow(image)
     vmin, vmax = vrange if vrange is not None else (scores.min(), scores.max())
     im = ax.imshow(scores, cmap=cmap, vmin=vmin, vmax=vmax)
     ax.imshow(image)

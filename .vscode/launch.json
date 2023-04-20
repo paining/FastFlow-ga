@@ -124,9 +124,9 @@
                 "-cfg", "configs/wide_resnet50_2.yaml",
                 "--device", "0",
                 "--data", 
-                "../.data/dac/20230418/train_augmentation/",
+                "../.data/dac/20230418/train_augmentation_new/",
                 "--eval",
-                "-ckpt", "_fastflow_experiment_checkpoints/wrn50_2_50epoch_silver_total_230418/20.pt"
+                "-ckpt", "_fastflow_experiment_checkpoints/exp7_wrn50_2_silver_total_230419/26.pt"
             ]
         },
     ]
