@@ -19,6 +19,7 @@ import cv2
 import imageutils
 from image_crop import image_crop
 from torchmetrics.classification import BinaryROC, BinaryAUROC
+import torch.nn.functional as TF
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -151,6 +152,7 @@ def eval_once(dataloader, model):
         with torch.no_grad():
             ret = model(data)
         outputs = ret["anomaly_map"].cpu().detach()
+        targets = TF.interpolate(targets, outputs.shape[-2:], mode='nearest-exact')
         outputs = outputs.flatten()
         targets = targets.flatten()
         pix_ad.append(outputs)
@@ -210,18 +212,22 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
         cropsize = cropsize - 16
 
         output = output.reshape(output.shape[-2], output.shape[-1])
+        target = TF.interpolate(target, output.shape[-2:], mode='nearest-exact')
         target = target.reshape(target.shape[-2:])
-        output = output[0:416, l:l+cropsize]
-        target = target[0:416, l:l+cropsize]
+
+        scale = ori_img.shape[0] / output.shape[-2]
+        l, r, t, b = int(l / scale), int((l+cropsize) / scale), 0, int(416 / scale)
+        output = output[t:b, l:r]
+        target = target[t:b, l:r]
         
         outputs.append(output.flatten())
         targets.append(target.flatten())
         img_ad.append( output.max() )
         img_gt.append( 1 if target.max() > 0 else 0 )
     outputs = torch.concat(outputs).cuda()
-    targets = torch.concat(targets).cuda()
+    targets = torch.concat(targets).cuda().int()
     img_ad = torch.stack(img_ad).cuda()
-    img_gt = torch.tensor(img_gt).cuda()
+    img_gt = torch.tensor(img_gt, dtype=torch.int32).cuda()
 
     # """Get Threshold from fpr < 0.01"""
     # fpr, tpr, thresholds = roc(img_ad, img_gt)
@@ -274,8 +280,8 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
         with torch.no_grad():
             ret = model(data)
         outputs = ret["anomaly_map"].cpu().detach().numpy()
-        outputs = outputs.reshape(outputs.shape[-2], outputs.shape[-1])
         outputs = 1 + outputs
+        outputs = outputs.reshape(outputs.shape[-2], outputs.shape[-1])
         boundary[outputs >= threshold] = 255
         boundary = (
             cv2.morphologyEx(

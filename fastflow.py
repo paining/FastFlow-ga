@@ -146,15 +146,20 @@ class FastFlow(nn.Module):
 
         if not self.training:
             anomaly_map_list = []
+            out_shape = None
             for output in outputs:
                 log_prob = -torch.mean(output**2, dim=1, keepdim=True) * 0.5
                 prob = torch.exp(log_prob)
-                a_map = F.interpolate(
-                    -prob,
-                    size=[self.input_size[1], self.input_size[0]],
-                    mode="bilinear",
-                    align_corners=False,
-                )
+                if out_shape is None:
+                    out_shape = prob.shape[-2:]
+                    a_map = -prob
+                else:
+                    a_map = F.interpolate(
+                        -prob,
+                        size=out_shape,
+                        mode="bilinear",
+                        align_corners=False,
+                    )
                 anomaly_map_list.append(a_map)
             anomaly_map_list = torch.stack(anomaly_map_list, dim=-1)
             anomaly_map = torch.mean(anomaly_map_list, dim=-1)
