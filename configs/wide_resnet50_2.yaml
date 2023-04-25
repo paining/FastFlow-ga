@@ -3,3 +3,6 @@ backbone_name: wide_resnet50_2
 flow_step: 6
 hidden_ratio: 0.25
 conv3x3_only: False
+use_coreset: True
+threshold: 0.7820881605148315
+coreset_filename: DAC_silver_0421_raw_data_64dim.pkl
