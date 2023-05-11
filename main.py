@@ -236,7 +236,7 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     img_gt = []
     filename_list = []
     for data, target, filename in tqdm(dataloader, dynamic_ncols=True, desc="finding threshold"):
-        if '111247' in filename[0]:
+        if '102341' in filename[0]:
             print()
         data = data.cuda()
         with torch.no_grad():
@@ -303,18 +303,23 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
 
     """Get Threshold from Image fpr < 0.18"""
     fpr, tpr, thresholds = roc(outputs, targets)
-    fpr_idx = torch.where(fpr < 0.18)[0]
+    fpr_idx = torch.where(fpr <= 0.18)[0]
     thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
     threshold = thresholds[thr_idx].item()
     logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
     logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
 
     fpr, tpr, thresholds = roc(img_ad, img_gt)
-    fpr_idx = torch.where(fpr < 0.18)[0]
+    fpr_idx = torch.where(fpr <= 0.18)[0]
     thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
     threshold = thresholds[thr_idx].item()
     logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
     logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
+
+    fpr, tpr, thresholds = roc(outputs, targets)
+    pix_thr_idx = torch.where(thresholds == threshold)[0]
+    logger.info(f"Patch Level: - FPR: {fpr[pix_thr_idx].item():6.4f} - TPR: {tpr[pix_thr_idx].item():6.4f}")
+
 
     os.makedirs(os.path.join(result_path, "TP"), exist_ok=True)
     os.makedirs(os.path.join(result_path, "FP"), exist_ok=True)
@@ -636,13 +641,14 @@ def evaluate(args):
         os.path.dirname(args.checkpoint), "result"
     )
     os.makedirs(result_path, exist_ok=True)
+    logger.info(f"Result path : {result_path}")
     device = torch.device("cuda")
     model.to(device)
     # model.cuda()
     # eval_once(test_dataloader, model)
     # eval_once_without_ground_truth(test_dataloader, model, result_path, device)
-    # calculate_tpr_fpr_with_f1_score(test_dataloader, model, result_path)
-    calculate_tpr_fpr_with_f1_score_with_coreset(test_dataloader, model, result_path)
+    calculate_tpr_fpr_with_f1_score(test_dataloader, model, result_path)
+    # calculate_tpr_fpr_with_f1_score_with_coreset(test_dataloader, model, result_path)
 
 
 def parse_args():
