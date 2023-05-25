@@ -110,7 +110,7 @@
                 "-cfg", "configs/wide_resnet50_2.yaml",
                 "--device", "0",
                 "--data", 
-                "../.data/dac/20230428/train_augmentation/"
+                "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/"
             ]
         },
         {
@@ -124,9 +124,39 @@
                 "-cfg", "configs/wide_resnet50_2.yaml",
                 "--device", "0",
                 "--data", 
-                "../.data/dac/20230428/F15-Silver/train_augmentation/",
+                "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/",
                 "--eval",
-                "-ckpt", ".result/fastflow/230429_wrn50_2_silver/54.pt"
+                "-ckpt", "result/exp8/172.pt"
+            ]
+        },
+        {
+            "name": "Python: Train DAC-WR50 1D",
+            "type": "python",
+            "request": "launch",
+            "program": "main1d.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args":[
+                "-cfg", "configs/wide_resnet50_2.yaml",
+                "--device", "0",
+                "--data", 
+                "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/"
+            ]
+        },
+        {
+            "name": "Python: Test DAC-WR50 1D",
+            "type": "python",
+            "request": "launch",
+            "program": "main1d.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/wide_resnet50_2.yaml",
+                "--device", "0",
+                "--data", 
+                "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/",
+                "--eval",
+                "-ckpt", "result/exp8/172.pt"
             ]
         },
     ]

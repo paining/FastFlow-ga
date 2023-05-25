@@ -9,6 +9,7 @@ from scipy.signal import medfilt
 logger = logging.getLogger(__name__)
 
 def image_crop(img:np.ndarray, criterion=10):
+    img = np.asarray(img)
     if len(img.shape) == 3:
         if img.shape[2] == 3:
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

@@ -77,3 +77,29 @@ def draw_heatmap_with_colorbar_with_image(
     plt.close(fig)
     return arr[:,:,:3]
     
+
+def visualize_tsne(data, label=None, savename=None):
+    from sklearn.manifold import TSNE
+    tsne = TSNE(verbose=1)
+    print("Start TSNE")
+    tsne_data = tsne.fit_transform(data)
+    print("TSNE Done")
+    x_new = tsne_data[:, 0]
+    y_new = tsne_data[:, 1]
+    
+    fig, ax = plt.subplots()
+    if label:
+        label_v = np.unique(label)
+        for l in label_v:
+            ax.scatter(
+                x_new[label==l], y_new[label==l],
+                alpha=0.2, label=f"{l}"
+            )
+    else:
+        ax.scatter(x_new, y_new, alpha=0.2)
+
+    fig.tight_layout()
+    if savename is not None: fig.savefig(savename)
+    arr = figure_to_array(fig)
+    plt.close(fig)
+    return arr[:,:,:3]
