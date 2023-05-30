@@ -2,6 +2,37 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import io
+import cv2
+import os
+
+"""Image write function from opencv-api.
+It have a error with korean characters.
+url=https://jangjy.tistory.com/337"""
+def imwrite( filename, img, params=None):
+    try:
+        ext = os.path.splitext( filename )[1]
+        res, binary_code = cv2.imencode( ext, img, params )
+
+        if res:
+            with open( filename, mode="w+b" ) as f:
+                binary_code.tofile( f )
+            return True
+        else:
+            return False
+    except Exception as e:
+        print(e)
+        return False
+
+def cvt2heatmap(gray):
+    heatmap = cv2.applyColorMap(np.uint8(gray), cv2.COLORMAP_JET)
+    return heatmap
+
+def heatmap_on_image(heatmap, image):
+    if heatmap.shape != image.shape:
+        heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
+    out = np.float32(heatmap)/255 + np.float32(image)/255
+    out = out / np.max(out)
+    return np.uint8(255 * out)
 
 def figure_to_array(fig:plt.Figure) -> np.ndarray:
     fig.canvas.draw()

@@ -73,6 +73,7 @@ def build_train_data_loader(args, config):
         root=args.data,
         input_size=config["input_size"],
         is_train=True,
+        crop=True,
     )
     return torch.utils.data.DataLoader(
         train_dataset,
@@ -94,6 +95,7 @@ def build_test_data_loader(args, config):
         root=args.data,
         input_size=config["input_size"],
         is_train=False,
+        crop=True,
     )
     return torch.utils.data.DataLoader(
         test_dataset,
@@ -608,6 +610,8 @@ def train(args):
     for epoch in range(const.NUM_EPOCHS):
         loss = train_one_epoch(train_dataloader, model, optimizer, epoch)
         loss_history.append( loss )
+
+
         if (epoch + 1) % const.EVAL_INTERVAL == 0:
             ret = eval_once(test_dataloader, model)
             torch.cuda.empty_cache()
@@ -617,9 +621,9 @@ def train(args):
             valid_loss.append(ret['loss'])
             ax2.clear()
             ax2.set_title("AUROC on validation")
-            ax1.plot(val_x, valid_loss, 'o-', label="valid")
             ax2.plot(val_x, auroc_history, 'g-', label="pixel")
             ax2.plot(val_x, img_auroc_history, 'b-', label="image")
+            ax2.grid(True)
             ax2.legend()
 
         if (epoch + 1) % const.CHECKPOINT_INTERVAL == 0:
@@ -631,9 +635,13 @@ def train(args):
                 },
                 os.path.join(checkpoint_dir, "%d.pt" % epoch),
             )
+
         ax1.clear()
         ax1.set_title("training loss")
-        ax1.plot(loss_history, 'r-')
+        ax1.plot(loss_history, 'r-', alpha=0.7, label="train")
+        ax1.plot(val_x, valid_loss, 'o-', label="valid")
+        ax1.grid(True)
+        ax1.legend()
         fig.tight_layout()
         fig.savefig(os.path.join(checkpoint_dir, "training history(temp).png"))
 

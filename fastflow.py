@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from resnet import wide_resnet50_2
+
 import constants as const
 
 
@@ -56,6 +58,18 @@ class FastFlow(nn.Module):
             self.feature_extractor = timm.create_model(backbone_name, pretrained=True)
             channels = [768]
             scales = [16]
+        elif backbone_name == const.BACKBONE_CFA_RESNET:
+            self.feature_extractor = wide_resnet50_2(pretrained=True, progress=True)
+            channels = [256, 512, 1024]
+            scales = [4, 8, 16]
+            self.norms = nn.ModuleList()
+            for in_channels, scale in zip(channels, scales):
+                self.norms.append(
+                    nn.LayerNorm(
+                        [in_channels, int(input_size[1] / scale), int(input_size[0] / scale)],
+                        elementwise_affine=True,
+                    )
+                )
         else:
             self.feature_extractor = timm.create_model(
                 backbone_name,

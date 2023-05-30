@@ -184,6 +184,7 @@ def eval_once(dataloader, model):
     pix_gt = []
     img_ad = []
     img_gt = []
+    loss_meter = utils.AverageMeter()
     for data, targets, _ in tqdm(dataloader, desc="Eval"):
         data, targets = data.cuda(), targets.cuda()
         with torch.no_grad():
@@ -197,6 +198,9 @@ def eval_once(dataloader, model):
         pix_gt.append(targets)
         img_ad.append(outputs.max())
         img_gt.append(1 if targets.max() > 0 else 0)
+        # log
+        if torch.count_nonzero(targets) == 0:
+            loss_meter.update(ret['loss'].item())
     pix_ad = torch.concat(pix_ad).cpu()
     pix_gt = torch.concat(pix_gt).cpu()
     img_ad = torch.stack(img_ad).cuda()
@@ -204,7 +208,7 @@ def eval_once(dataloader, model):
     pix_auroc = pix_auroc_metric(pix_ad.flatten(), pix_gt.flatten()).item()
     img_auroc = img_auroc_metric(img_ad.flatten(), img_gt.flatten()).item()
     # logger.info("pixel AUROC: {}".format(pix_auroc))
-    ret = {'auroc': pix_auroc, 'img_auroc':img_auroc}
+    ret = {'auroc': pix_auroc, 'img_auroc':img_auroc, "loss": loss_meter.avg}
     logger.info("pixel AUROC: {}, image AUROC: {}".format(ret['auroc'], ret['img_auroc']))
     return ret
 
@@ -275,7 +279,7 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     img_ad = torch.stack(img_ad).cuda()
     img_gt = torch.tensor(img_gt, dtype=torch.int32).cuda()
 
-    # """Get Threshold from fpr < 0.01"""
+    """Get Threshold from fpr < 0.01"""
     # fpr, tpr, thresholds = roc(img_ad, img_gt)
     # threshold = thresholds[fpr < 0.01][-1].item()
     # logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
@@ -286,39 +290,39 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     # logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
     # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
 
-    # """Get Threshold from Image tpr > 0.9"""
-    # fpr, tpr, thresholds = roc(outputs, targets)
-    # tpr_idx = torch.where(tpr > 0.9)[0]
-    # thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
-    # threshold = thresholds[thr_idx].item()
-    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
-    # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
-
-    # fpr, tpr, thresholds = roc(img_ad, img_gt)
-    # tpr_idx = torch.where(tpr > 0.9)[0]
-    # thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
-    # threshold = thresholds[thr_idx].item()
-    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
-    # logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
-
-    """Get Threshold from Image fpr < 0.18"""
+    """Get Threshold from Image tpr > 0.995"""
     fpr, tpr, thresholds = roc(outputs, targets)
-    fpr_idx = torch.where(fpr <= 0.18)[0]
-    thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
+    tpr_idx = torch.where(tpr >= 0.995)[0]
+    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
     threshold = thresholds[thr_idx].item()
-    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():10.8f} - TPR: {tpr[thr_idx].item():10.8f}")
     logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
 
     fpr, tpr, thresholds = roc(img_ad, img_gt)
-    fpr_idx = torch.where(fpr <= 0.18)[0]
-    thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
+    tpr_idx = torch.where(tpr >= 0.995)[0]
+    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
     threshold = thresholds[thr_idx].item()
-    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():10.8f} - TPR: {tpr[thr_idx].item():10.8f}")
     logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
+
+    """Get Threshold from Image fpr < 0.18"""
+    # fpr, tpr, thresholds = roc(outputs, targets)
+    # fpr_idx = torch.where(fpr <= 0.18)[0]
+    # thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
+    # threshold = thresholds[thr_idx].item()
+    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
+
+    # fpr, tpr, thresholds = roc(img_ad, img_gt)
+    # fpr_idx = torch.where(fpr <= 0.18)[0]
+    # thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
+    # threshold = thresholds[thr_idx].item()
+    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    # logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
 
     fpr, tpr, thresholds = roc(outputs, targets)
     pix_thr_idx = torch.where(thresholds == threshold)[0]
-    logger.info(f"Patch Level: - FPR: {fpr[pix_thr_idx].item():6.4f} - TPR: {tpr[pix_thr_idx].item():6.4f}")
+    logger.info(f"Patch Level: - FPR: {fpr[pix_thr_idx].item():10.8f} - TPR: {tpr[pix_thr_idx].item():10.8f}")
 
 
     os.makedirs(os.path.join(result_path, "TP"), exist_ok=True)
@@ -576,6 +580,20 @@ def train(args):
     )
     os.makedirs(checkpoint_dir, exist_ok=True)
 
+    handler = logging.FileHandler(os.path.join(checkpoint_dir, "log.log"))
+    formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
+    handler.setFormatter(formatter)
+    logging.getLogger().addHandler(handler)
+
+    logger.info(vars(args))
+    logger.info(
+        f"Constants:\n"
+        f"  BatchSize    : {const.BATCH_SIZE}\n"
+        f"  Num Epochs   : {const.NUM_EPOCHS}\n"
+        f"  learnig rate : {const.LR}\n",
+        f"  weight decay : {const.WEIGHT_DECAY}\n"
+    )
+
     config = yaml.safe_load(open(args.config, "r"))
     model = build_model(config)
     optimizer = build_optimizer(model)
@@ -590,10 +608,11 @@ def train(args):
     model.cuda()
 
     loss_history = []
+    valid_loss = []
     val_x = []
     auroc_history = []
     img_auroc_history = []
-    fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(20,20))
+    fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(10,10))
 
     for epoch in range(const.NUM_EPOCHS):
         loss = train_one_epoch(train_dataloader, model, optimizer, epoch)
@@ -604,10 +623,12 @@ def train(args):
             val_x.append(epoch)
             auroc_history.append(ret['auroc'])
             img_auroc_history.append(ret['img_auroc'])
+            valid_loss.append(ret['loss'])
             ax2.clear()
             ax2.set_title("AUROC on validation")
             ax2.plot(val_x, auroc_history, 'g-', label="pixel")
             ax2.plot(val_x, img_auroc_history, 'b-', label="image")
+            ax2.grid(True)
             ax2.legend()
 
         if (epoch + 1) % const.CHECKPOINT_INTERVAL == 0:
@@ -621,10 +642,13 @@ def train(args):
             )
         ax1.clear()
         ax1.set_title("training loss")
-        ax1.plot(loss_history, 'r-')
-        plt.savefig("training history(temp).png")
+        ax1.plot(val_x, valid_loss, 'o-', label="valid", alpha=0.6)
+        ax1.plot(loss_history, 'r-', label="train", alpha=0.6)
+        ax1.grid(True)
+        ax1.legend()
+        plt.savefig(os.path.join(checkpoint_dir, "training history(temp).png"))
     
-    plt.savefig("training history.png")
+    plt.savefig(os.path.join(checkpoint_dir, "training history.png"))
 
 
 def evaluate(args):
@@ -641,6 +665,13 @@ def evaluate(args):
         os.path.dirname(args.checkpoint), "result"
     )
     os.makedirs(result_path, exist_ok=True)
+
+    handler = logging.FileHandler(os.path.join(result_path, "log.log"))
+    formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
+    handler.setFormatter(formatter)
+    logging.getLogger().addHandler(handler)
+    logger.info(vars(args))
+
     logger.info(f"Result path : {result_path}")
     device = torch.device("cuda")
     model.to(device)
@@ -676,12 +707,7 @@ def parse_args():
 
 if __name__ == "__main__":
     logging.basicConfig()
-    os.makedirs("result", exist_ok=True)
-    handler = logging.FileHandler("result/log.log")
-    formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
-    handler.setFormatter(formatter)
 
-    
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
@@ -691,9 +717,7 @@ if __name__ == "__main__":
 
     sys.excepthook = handle_exception
 
-    logging.getLogger().addHandler(handler)
     args = parse_args()
-    logger.info(" ".join(sys.argv))
     if args.eval:
         evaluate(args)
     else:

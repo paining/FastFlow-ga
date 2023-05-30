@@ -1,0 +1,5 @@
+input_size: [4096, 416]
+backbone_name: CFA_resnet
+flow_step: 6
+hidden_ratio: 0.25
+conv3x3_only: False

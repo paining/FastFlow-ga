@@ -107,7 +107,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args":[
-                "-cfg", "configs/wide_resnet50_2.yaml",
+                "-cfg", "configs/CFA_wide_resnet50_2.yaml",
                 "--device", "0",
                 "--data", 
                 "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/"
@@ -126,7 +126,7 @@
                 "--data", 
                 "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/",
                 "--eval",
-                "-ckpt", "result/exp8/172.pt"
+                "-ckpt", "result/0513_Silver_Flat_300epoch/172.pt"
             ]
         },
         {
