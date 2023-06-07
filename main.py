@@ -214,6 +214,7 @@ def eval_once(dataloader, model):
 
 def get_threshold_from_tpr_fpr(outputs, targets, tpr_th=None, fpr_th=None):
     roc = BinaryROC()
+    auroc = BinaryAUROC()
     fpr, tpr, thresholds = roc(outputs, targets)
     if tpr is None and fpr is None:
         logger.error("One of parameters should be not None.")
@@ -225,7 +226,7 @@ def get_threshold_from_tpr_fpr(outputs, targets, tpr_th=None, fpr_th=None):
     elif tpr_th is not None:
         tpr_idx = torch.where(tpr > tpr_th)[0]
         thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
-    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    logger.info(f"Threshold: {thresholds[thr_idx].item()} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
     logger.info(f"AUROC: {auroc(outputs, targets)}")
     return thresholds[thr_idx].item(), fpr[thr_idx].item(), tpr[thr_idx].item()
 
@@ -290,16 +291,16 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     # logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
     # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
 
-    """Get Threshold from Image tpr > 0.995"""
+    """Get Threshold from Image tpr > 1"""
     fpr, tpr, thresholds = roc(outputs, targets)
-    tpr_idx = torch.where(tpr >= 0.995)[0]
+    tpr_idx = torch.where(tpr >= 1)[0]
     thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
     threshold = thresholds[thr_idx].item()
     logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():10.8f} - TPR: {tpr[thr_idx].item():10.8f}")
     logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
 
     fpr, tpr, thresholds = roc(img_ad, img_gt)
-    tpr_idx = torch.where(tpr >= 0.995)[0]
+    tpr_idx = torch.where(tpr >= 1)[0]
     thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
     threshold = thresholds[thr_idx].item()
     logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():10.8f} - TPR: {tpr[thr_idx].item():10.8f}")
@@ -575,10 +576,17 @@ def train(args):
     assert args.device < torch.cuda.device_count(), 'device number is not acceptable'
     torch.cuda.set_device(args.device)
     os.makedirs(const.CHECKPOINT_DIR, exist_ok=True)
-    checkpoint_dir = os.path.join(
-        const.CHECKPOINT_DIR, "exp%d" % len(os.listdir(const.CHECKPOINT_DIR))
-    )
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    i = 0
+    while i >= 0:
+        checkpoint_dir = os.path.join(
+            const.CHECKPOINT_DIR, "exp%d" % (len(os.listdir(const.CHECKPOINT_DIR)) + i)
+        )
+        try:
+            os.makedirs(checkpoint_dir, exist_ok=False)
+        except FileExistsError as e:
+            i = i + 1
+        else:
+            i = -1
 
     handler = logging.FileHandler(os.path.join(checkpoint_dir, "log.log"))
     formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
@@ -590,8 +598,8 @@ def train(args):
         f"Constants:\n"
         f"  BatchSize    : {const.BATCH_SIZE}\n"
         f"  Num Epochs   : {const.NUM_EPOCHS}\n"
-        f"  learnig rate : {const.LR}\n",
-        f"  weight decay : {const.WEIGHT_DECAY}\n"
+        f"  learnig rate : {const.LR}\n"
+        f"  weight decay : {const.WEIGHT_DECAY}"
     )
 
     config = yaml.safe_load(open(args.config, "r"))

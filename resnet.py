@@ -14,7 +14,7 @@ model_urls =   {'resnet18': 'https://download.pytorch.org/models/resnet18-f37072
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                        padding=dilation, groups=groups, bias=False, dilation=dilation, padding_mode='reflect')
+                        padding=dilation, groups=groups, bias=False, dilation=dilation, padding_mode='zeros')
 
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
@@ -146,7 +146,7 @@ class ResNet(nn.Module):
                                 "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False, padding_mode='reflect')
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False, padding_mode="zeros")
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)

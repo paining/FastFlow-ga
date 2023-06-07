@@ -121,12 +121,12 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args":[
-                "-cfg", "configs/wide_resnet50_2.yaml",
+                "-cfg", "configs/CFA_wide_resnet50_2.yaml",
                 "--device", "0",
                 "--data", 
                 "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/",
                 "--eval",
-                "-ckpt", "result/0513_Silver_Flat_300epoch/172.pt"
+                "-ckpt", ".result/fastflow/0603_SilverFlat_CFA_feature_replicatepad/295.pt"
             ]
         },
         {
