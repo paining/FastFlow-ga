@@ -587,6 +587,7 @@ def train(args):
             i = i + 1
         else:
             i = -1
+    os.makedirs(os.path.join(checkpoint_dir, "models"), exist_ok=True)
 
     handler = logging.FileHandler(os.path.join(checkpoint_dir, "log.log"))
     formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
@@ -646,7 +647,7 @@ def train(args):
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 },
-                os.path.join(checkpoint_dir, "%d.pt" % epoch),
+                os.path.join(checkpoint_dir, "models", "%d.pt" % epoch),
             )
         ax1.clear()
         ax1.set_title("training loss")
