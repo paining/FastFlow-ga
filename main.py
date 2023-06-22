@@ -26,7 +26,7 @@ import torchvision.transforms as TVT
 import pandas as pd
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 import pickle
 
@@ -176,7 +176,7 @@ def train_one_epoch(dataloader, model, optimizer, epoch):
 #     return ret
 
 
-def eval_once(dataloader, model):
+def eval_once(dataloader, model, crop=False):
     model.eval()
     pix_auroc_metric = BinaryAUROC()
     img_auroc_metric = BinaryAUROC()
@@ -185,11 +185,24 @@ def eval_once(dataloader, model):
     img_ad = []
     img_gt = []
     loss_meter = utils.AverageMeter()
-    for data, targets, _ in tqdm(dataloader, desc="Eval"):
+    for data, targets, imgfilename in tqdm(dataloader, desc="Eval"):
+        img = cv2.imread(imgfilename[0], 0)
+
+        if crop:
+            _crop = crop
+            l, r, w = image_crop(img[:416, :], 50)
+            if l == -1 or r == -1 or w < img.shape[1]//4:
+                _crop = False
+            cropsize = 32 * (w // 32)
+            offset = (w % 32) // 2
+            l = l + offset
         data, targets = data.cuda(), targets.cuda()
         with torch.no_grad():
             ret = model(data)
         outputs = ret["anomaly_map"].cpu().detach()
+        if _crop:
+            outputs = outputs[:, :, :, l//4:(l+cropsize)//4]
+            targets = targets[:, :, :, l:l+cropsize]
         # targets = TF.interpolate(targets, outputs.shape[-2:], mode='nearest-exact')
         targets = TF.max_pool2d(targets, kernel_size=4, stride=4)
         outputs = outputs.flatten()
@@ -325,6 +338,50 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     pix_thr_idx = torch.where(thresholds == threshold)[0]
     logger.info(f"Patch Level: - FPR: {fpr[pix_thr_idx].item():10.8f} - TPR: {tpr[pix_thr_idx].item():10.8f}")
 
+    pix_fpr, pix_tpr, pix_thresholds = roc(outputs, targets)
+    img_fpr, img_tpr, img_threshold = roc(img_ad, img_gt)
+
+
+    logger.info(f"------- Find Positive Threshold --------")
+    tpr_idx = torch.where(pix_tpr >= 0.05)[0]
+    idx = tpr_idx[torch.argmin(pix_fpr[tpr_idx])]
+    threshold = pix_thresholds[idx]
+
+    logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
+    img_idx = torch.where(img_threshold == img_threshold[img_threshold <= threshold].max())[0].item()
+    logger.info(f"[Image Level] FPR : {img_fpr[img_idx]}, TPR : {img_tpr[img_idx]}, Threshold : {img_threshold[img_idx]}")
+    pos_thr = threshold
+
+    logger.info(f"------- Find Negative Threshold --------")
+    # fpr_idx = torch.where(pix_fpr == 0.0)[0]
+    # idx = fpr_idx[torch.argmax(pix_tpr[fpr_idx])]
+    tpr_idx = torch.where(pix_tpr == 1)[0]
+    idx = tpr_idx[torch.argmin(pix_fpr[tpr_idx])]
+    threshold = pix_thresholds[idx]
+
+    logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
+    logger.info(f"[Patch Level] TNR : {1 - pix_fpr[idx]}, FNR : {1 - pix_tpr[idx]}, Threshold : {threshold}")
+    neg_thr = threshold
+
+    fig, ax = plt.subplots(figsize=(12, 12))
+    ax.hist(
+        outputs[targets == 0].cpu().detach().numpy(),
+        bins=100, range=(0, 1), label="normal", histtype="step", color="blue", alpha=0.7, log=True, linewidth=2
+    )
+    ax.hist(
+        outputs[targets != 0].cpu().detach().numpy(),
+        bins=100, range=(0, 1), label="defect", histtype="step", color="orange", alpha=0.7, log=True, linewidth=2
+    )
+    ax.axvline(pos_thr, label="pos thr", color="magenta", alpha=0.4, linestyle="dashed")
+    ax.axvline(neg_thr, label="neg thr", color="green", alpha=0.4, linestyle="dashed")
+    ax.set_title("Fastflow distribution")
+    ax.set_xlabel("Probability of Abnormal")
+    ax.set_ylabel("Number of Patches")
+    ax.grid(True, "both", alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(result_path, "distribution.png"))
+    plt.close(fig)
 
     os.makedirs(os.path.join(result_path, "TP"), exist_ok=True)
     os.makedirs(os.path.join(result_path, "FP"), exist_ok=True)
@@ -590,6 +647,7 @@ def train(args):
     os.makedirs(os.path.join(checkpoint_dir, "models"), exist_ok=True)
 
     handler = logging.FileHandler(os.path.join(checkpoint_dir, "log.log"))
+    handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
     handler.setFormatter(formatter)
     logging.getLogger().addHandler(handler)
@@ -627,7 +685,7 @@ def train(args):
         loss = train_one_epoch(train_dataloader, model, optimizer, epoch)
         loss_history.append( loss )
         if (epoch + 1) % const.EVAL_INTERVAL == 0:
-            ret = eval_once(test_dataloader, model)
+            ret = eval_once(test_dataloader, model, crop=True)
             torch.cuda.empty_cache()
             val_x.append(epoch)
             auroc_history.append(ret['auroc'])

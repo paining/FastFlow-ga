@@ -11,10 +11,10 @@ model_urls =   {'resnet18': 'https://download.pytorch.org/models/resnet18-f37072
                 'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth'}
 
 
-def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
+def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1, padding_mode:str="zeros") -> nn.Conv2d:
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                        padding=dilation, groups=groups, bias=False, dilation=dilation, padding_mode='zeros')
+                        padding=dilation, groups=groups, bias=False, dilation=dilation, padding_mode=padding_mode)
 
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
@@ -80,7 +80,8 @@ class Bottleneck(nn.Module):
         groups: int = 1,
         base_width: int = 64,
         dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        padding_mode: str = "zeros"
     ) -> None:
         super(Bottleneck, self).__init__()
         if norm_layer is None:
@@ -89,7 +90,7 @@ class Bottleneck(nn.Module):
 
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
-        self.conv2 = conv3x3(width, width, stride, groups, dilation)
+        self.conv2 = conv3x3(width, width, stride, groups, dilation, padding_mode)
         self.bn2 = norm_layer(width)
         self.conv3 = conv1x1(width, planes * self.expansion)
         self.bn3 = norm_layer(planes * self.expansion)
@@ -130,7 +131,8 @@ class ResNet(nn.Module):
         groups: int = 1,
         width_per_group: int = 64,
         replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., nn.Module]] = None
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        padding_mode: str = "zeros"
     ) -> None:
         super(ResNet, self).__init__()
         if norm_layer is None:
@@ -146,17 +148,17 @@ class ResNet(nn.Module):
                                 "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False, padding_mode="zeros")
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False, padding_mode=padding_mode)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer1 = self._make_layer(block, 64, layers[0], padding_mode=padding_mode)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
-                                        dilate=replace_stride_with_dilation[0])
+                                        dilate=replace_stride_with_dilation[0], padding_mode=padding_mode)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
-                                        dilate=replace_stride_with_dilation[1])
+                                        dilate=replace_stride_with_dilation[1], padding_mode=padding_mode)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
-                                        dilate=replace_stride_with_dilation[2])
+                                        dilate=replace_stride_with_dilation[2], padding_mode=padding_mode)
         
 
         for m in self.modules():
@@ -174,7 +176,7 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn2.weight, 0)  
 
     def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes: int, blocks: int,
-                    stride: int = 1, dilate: bool = False) -> nn.Sequential:
+                    stride: int = 1, dilate: bool = False, padding_mode="zeros") -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
@@ -189,12 +191,12 @@ class ResNet(nn.Module):
 
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer))
+                            self.base_width, previous_dilation, norm_layer, padding_mode=padding_mode))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups=self.groups,
                                 base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer))
+                                norm_layer=norm_layer, padding_mode=padding_mode))
 
         return nn.Sequential(*layers)
 
@@ -210,8 +212,8 @@ class ResNet(nn.Module):
         x_3 = self.layer3(x_2)
 
         output = [x_1, x_2, x_3]
-        for i in range(len(output)):
-            output[i] = F.leaky_relu(output[i])
+        # for i in range(len(output)):
+        #     output[i] = F.leaky_relu(output[i])
             
         return output
 
@@ -241,10 +243,3 @@ def resnet18(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
 def wide_resnet50_2(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     kwargs['width_per_group'] = 64 * 2
     return _resnet('wide_resnet50_2', Bottleneck, [3, 4, 6, 3], pretrained, progress, **kwargs)
-
-
-
-
-
-
-

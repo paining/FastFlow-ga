@@ -41,11 +41,11 @@ def nf_fast_flow(input_chw, conv3x3_only, hidden_ratio, flow_steps, clamp=2.0):
 class FastFlow(nn.Module):
     def __init__(
         self,
-        backbone_name,
-        flow_steps,
-        input_size,
-        conv3x3_only=False,
-        hidden_ratio=1.0,
+        backbone_name:str,
+        flow_steps:int,
+        input_size:list,
+        conv3x3_only:bool=False,
+        hidden_ratio:float=1.0,
     ):
         super(FastFlow, self).__init__()
         assert (
@@ -58,8 +58,11 @@ class FastFlow(nn.Module):
             self.feature_extractor = timm.create_model(backbone_name, pretrained=True)
             channels = [768]
             scales = [16]
-        elif backbone_name == const.BACKBONE_CFA_RESNET:
-            self.feature_extractor = wide_resnet50_2(pretrained=True, progress=True)
+        elif backbone_name.startswith(const.BACKBONE_CFA_RESNET):
+            kwargs = {}
+            if backbone_name.endswith(("zeros", "replicate")):
+                kwargs["padding_mode"] = backbone_name.rsplit("_", 1)[-1]
+            self.feature_extractor = wide_resnet50_2(pretrained=True, progress=True, **kwargs)
             channels = [256, 512, 1024]
             scales = [4, 8, 16]
             self.norms = nn.ModuleList()
