@@ -350,7 +350,7 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
     img_idx = torch.where(img_threshold == img_threshold[img_threshold <= threshold].max())[0].item()
     logger.info(f"[Image Level] FPR : {img_fpr[img_idx]}, TPR : {img_tpr[img_idx]}, Threshold : {img_threshold[img_idx]}")
-    pos_thr = threshold
+    pos_thr = threshold.item()
 
     logger.info(f"------- Find Negative Threshold --------")
     # fpr_idx = torch.where(pix_fpr == 0.0)[0]
@@ -361,7 +361,7 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
 
     logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
     logger.info(f"[Patch Level] TNR : {1 - pix_fpr[idx]}, FNR : {1 - pix_tpr[idx]}, Threshold : {threshold}")
-    neg_thr = threshold
+    neg_thr = threshold.item()
 
     fig, ax = plt.subplots(figsize=(12, 12))
     ax.hist(
