@@ -28,10 +28,6 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-class TrainAdapter(logging.LoggerAdapter):
-    def process(self, msg, kwargs):
-        return 'Train epoch %5d : %s' % (self.extra['epoch'], msg), kwargs
-
 import pickle
 
 class PatchCore:
@@ -67,17 +63,17 @@ class PatchCore:
 
 
 def build_train_data_loader(args, config):
-    # train_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
-    #     root=args.data,
-    #     # category=args.category,
-    #     input_size=config["input_size"],
-    #     is_train=True,
-    # )
-    train_dataset = dataset.DACDataset(
+    train_dataset = dataset.MVTecDataset(
         root=args.data,
+        category=args.category,
         input_size=config["input_size"],
         is_train=True,
     )
+    # train_dataset = dataset.DACDataset(
+    #     root=args.data,
+    #     input_size=config["input_size"],
+    #     is_train=True,
+    # )
     return torch.utils.data.DataLoader(
         train_dataset,
         batch_size=const.BATCH_SIZE,
@@ -88,17 +84,17 @@ def build_train_data_loader(args, config):
 
 
 def build_test_data_loader(args, config):
-    # test_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
-    #     root=args.data,
-    #     # category=args.category,
-    #     input_size=config["input_size"],
-    #     is_train=False,
-    # )
-    test_dataset = dataset.DACDataset(
+    test_dataset = dataset.MVTecDataset(
         root=args.data,
+        category=args.category,
         input_size=config["input_size"],
         is_train=False,
     )
+    # test_dataset = dataset.DACDataset(
+    #     root=args.data,
+    #     input_size=config["input_size"],
+    #     is_train=False,
+    # )
     return torch.utils.data.DataLoader(
         test_dataset,
         batch_size=1, # const.BATCH_SIZE,
@@ -189,7 +185,8 @@ def eval_once(dataloader, model, crop=False):
     img_ad = []
     img_gt = []
     loss_meter = utils.AverageMeter()
-    for data, targets, imgfilename in tqdm(dataloader, desc="Eval", leave=False):
+    _crop = False
+    for data, targets, imgfilename in tqdm(dataloader, desc="Eval"):
         img = cv2.imread(imgfilename[0], 0)
 
         if crop:
@@ -222,12 +219,8 @@ def eval_once(dataloader, model, crop=False):
     pix_gt = torch.concat(pix_gt).cpu()
     img_ad = torch.stack(img_ad).cuda()
     img_gt = torch.tensor(img_gt).cuda()
-    if len(pix_gt.unique()) > 1:
-        pix_auroc = pix_auroc_metric(pix_ad.flatten(), pix_gt.flatten()).item()
-        img_auroc = img_auroc_metric(img_ad.flatten(), img_gt.flatten()).item()
-    else:
-        pix_auroc = None
-        img_auroc = None
+    pix_auroc = pix_auroc_metric(pix_ad.flatten(), pix_gt.flatten()).item()
+    img_auroc = img_auroc_metric(img_ad.flatten(), img_gt.flatten()).item()
     # logger.info("pixel AUROC: {}".format(pix_auroc))
     ret = {'auroc': pix_auroc, 'img_auroc':img_auroc, "loss": loss_meter.avg}
     logger.info("pixel AUROC: {}, image AUROC: {}".format(ret['auroc'], ret['img_auroc']))
@@ -353,23 +346,23 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     logger.info(f"------- Find Positive Threshold --------")
     tpr_idx = torch.where(pix_tpr >= 0.05)[0]
     idx = tpr_idx[torch.argmin(pix_fpr[tpr_idx])]
-    threshold = pix_thresholds[idx]
+    threshold = pix_thresholds[idx].item()
 
     logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
-    img_idx = torch.where(img_threshold == img_threshold[img_threshold <= threshold].max())[0].item()
+    img_idx = torch.where(img_threshold == img_threshold[img_threshold <= threshold].max())[0].max().item()
     logger.info(f"[Image Level] FPR : {img_fpr[img_idx]}, TPR : {img_tpr[img_idx]}, Threshold : {img_threshold[img_idx]}")
-    pos_thr = threshold.item()
+    pos_thr = threshold
 
     logger.info(f"------- Find Negative Threshold --------")
     # fpr_idx = torch.where(pix_fpr == 0.0)[0]
     # idx = fpr_idx[torch.argmax(pix_tpr[fpr_idx])]
     tpr_idx = torch.where(pix_tpr == 1)[0]
     idx = tpr_idx[torch.argmin(pix_fpr[tpr_idx])]
-    threshold = pix_thresholds[idx]
+    threshold = pix_thresholds[idx].item()
 
     logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
     logger.info(f"[Patch Level] TNR : {1 - pix_fpr[idx]}, FNR : {1 - pix_tpr[idx]}, Threshold : {threshold}")
-    neg_thr = threshold.item()
+    neg_thr = threshold
 
     fig, ax = plt.subplots(figsize=(12, 12))
     ax.hist(
@@ -658,6 +651,7 @@ def train(args):
         os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(os.path.join(checkpoint_dir, "models"), exist_ok=True)
 
+
     handler = logging.FileHandler(os.path.join(checkpoint_dir, "log.log"))
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
@@ -691,13 +685,13 @@ def train(args):
     val_x = []
     auroc_history = []
     img_auroc_history = []
-    fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(10,10))
+    fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(5,5))
 
     for epoch in range(const.NUM_EPOCHS):
         loss = train_one_epoch(train_dataloader, model, optimizer, epoch)
         loss_history.append( loss )
         if (epoch + 1) % const.EVAL_INTERVAL == 0:
-            ret = eval_once(test_dataloader, model, crop=True)
+            ret = eval_once(test_dataloader, model, crop=False)
             torch.cuda.empty_cache()
             val_x.append(epoch)
             auroc_history.append(ret['auroc'])
@@ -705,8 +699,8 @@ def train(args):
             valid_loss.append(ret['loss'])
             ax2.clear()
             ax2.set_title("AUROC on validation")
-            ax2.plot(val_x, auroc_history, 'g-', label="pixel")
-            ax2.plot(val_x, img_auroc_history, 'b-', label="image")
+            ax2.plot(val_x, auroc_history, 'g-', label="pixel", alpha=0.8)
+            ax2.plot(val_x, img_auroc_history, 'b-', label="image", alpha=0.8)
             ax2.grid(True)
             ax2.legend()
 
@@ -741,7 +735,8 @@ def evaluate(args):
     model.load_state_dict(checkpoint["model_state_dict"])
     test_dataloader = build_test_data_loader(args, config)
     result_path = os.path.join(
-        os.path.dirname(args.checkpoint), "result"
+        os.path.dirname(os.path.dirname(args.checkpoint)),
+        args.exp_name if args.exp_name is not None else "result"
     )
     os.makedirs(result_path, exist_ok=True)
 
@@ -760,68 +755,6 @@ def evaluate(args):
     calculate_tpr_fpr_with_f1_score(test_dataloader, model, result_path)
     # calculate_tpr_fpr_with_f1_score_with_coreset(test_dataloader, model, result_path)
 
-
-def evaluate_all(args):
-    config = yaml.safe_load(open(args.config, "r"))
-    if os.path.isfile(args.checkpoint):
-        print("--ERROR : given ckpt is file, please give ckpt as path.")
-        return
-
-    if isinstance(config["input_size"], int): 
-        config["input_size"] = [config["input_size"], config["input_size"]]
-
-    model = build_model(config)
-    test_dataloader = build_test_data_loader(args, config)
-    result_path = os.path.join(const.CHECKPOINT_DIR, args.exp_name)
-    os.makedirs(result_path, exist_ok=True)
-
-    handler = logging.FileHandler(os.path.join(result_path, "log.log"))
-    formatter = logging.Formatter(fmt="{levelname:<5} > $ {message}", style="{")
-    handler.setFormatter(formatter)
-    logging.getLogger().addHandler(handler)
-    logger.info(vars(args))
-
-    logger.info(f"Result path : {result_path}")
-    device = torch.device("cuda")
-    model.to(device)
-
-    filelist = []
-    for file in os.listdir(args.checkpoint):
-        fpath = os.path.join(args.checkpoint, file)
-        fname, fext = os.path.splitext(file)
-        if not os.path.isfile(fpath) or fext != ".pt" or not fname.isdecimal():
-            continue
-        filelist.append(int(fname))
-
-    xs = []
-    img_auroc = []
-    val_loss = []
-    fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(10,10))
-    with tqdm(sorted(filelist)) as pbar:
-        for epoch in pbar:
-            pbar.set_postfix({"epoch": epoch})
-            adapter = TrainAdapter(logger, {"epoch": epoch})
-            fpath = os.path.join(args.checkpoint, f"{epoch}.pt")
-            checkpoint = torch.load(fpath)
-            model.load_state_dict(checkpoint["model_state_dict"])
-            ret = eval_once(test_dataloader, model, True)
-            xs.append(epoch)
-            img_auroc.append(ret["img_auroc"])
-            val_loss.append(ret["loss"])
-
-            ax1.clear()
-            ax2.clear()
-            ax2.set_title("AUROC on validation")
-            ax2.plot(xs, img_auroc, 'b-', label="image")
-            ax2.grid(True)
-            ax2.legend()
-            ax1.set_title("validation loss")
-            ax1.plot(xs, val_loss, 'o-', label="valid", alpha=0.6)
-            ax1.grid(True)
-            ax1.legend()
-            plt.savefig(os.path.join(result_path, "evaluate all.png"))
-
-    plt.close(fig)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train FastFlow on MVTec-AD dataset")
@@ -861,7 +794,6 @@ if __name__ == "__main__":
 
     args = parse_args()
     if args.eval:
-        # evaluate(args)
-        evaluate_all(args)
+        evaluate(args)
     else:
         train(args)
