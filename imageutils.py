@@ -87,9 +87,13 @@ def draw_heatmap_with_colorbar_with_image(
     cmap='jet',
     vrange:tuple=None,
     savepath=None,
+    display_axis="vertical",
 ):
     fig = plt.figure(figsize=figsize)
-    ax_img, ax = fig.subplots(2,1)
+    if display_axis == "vertical":
+        ax_img, ax = fig.subplots(2, 1)
+    elif display_axis == "horizontal":
+        ax_img, ax = fig.subplots(1, 2)
     ax_img.imshow(image)
     vmin, vmax = vrange if vrange is not None else (scores.min(), scores.max())
     im = ax.imshow(scores, cmap=cmap, vmin=vmin, vmax=vmax)
