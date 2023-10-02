@@ -212,8 +212,8 @@ class ResNet(nn.Module):
         x_3 = self.layer3(x_2)
 
         output = [x_1, x_2, x_3]
-        # for i in range(len(output)):
-        #     output[i] = F.leaky_relu(output[i])
+        for i in range(len(output)):
+            output[i] = F.leaky_relu(output[i])
             
         return output
 

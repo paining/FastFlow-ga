@@ -1,8 +1,5 @@
-input_size: [4096, 416]
+input_size: [512, 512]
 backbone_name: wide_resnet50_2
-flow_step: 6
+flow_step: 10
 hidden_ratio: 0.25
 conv3x3_only: False
-use_coreset: True
-threshold: 0.7820881605148315
-coreset_filename: DAC_silver_0421_raw_data_64dim.pkl

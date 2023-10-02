@@ -48,7 +48,7 @@ class MVTecDataset(torch.utils.data.Dataset):
                     image_file.replace('\\', '/').replace("/test/", "/ground_truth/").replace(".png", "_mask.png")
                 )
                 target = self.target_transform(target)
-            return image, target
+            return image, target, image_file
 
     def __len__(self):
         return len(self.image_files)
@@ -174,7 +174,7 @@ class DACDataset(torch.utils.data.Dataset):
                     target = self.target_transform(target)
                 except FileNotFoundError as e:
                     logger.exception(e)
-                    target = torch.zeros_like(image, dtype=torch.int32)
+                    target = torch.ones_like(image, dtype=torch.float)
             return image, target, image_file
             # return image, image_file
 
