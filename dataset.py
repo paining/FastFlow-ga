@@ -180,3 +180,38 @@ class DACDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.image_files)
+
+
+
+class SKONDataset(torch.utils.data.Dataset):
+    def __init__(self, root, category, input_size, is_train=True):
+        self.image_transform = transforms.Compose(
+            [
+                transforms.Resize(input_size[::-1]),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+        if is_train:
+            self.image_files = glob(
+                os.path.join(root, category, "train", "good", "*.jpg")
+            )
+        else:
+            self.image_files = glob(os.path.join(root, category, "test", "*", "*.jpg"))
+        self.is_train = is_train
+
+    def __getitem__(self, index):
+        image_file = self.image_files[index]
+        image = Image.open(image_file)
+        image = self.image_transform(image)
+        if self.is_train:
+            return image
+        else:
+            if os.path.dirname(image_file).endswith("good"):
+                target = 0
+            else:
+                target = 1
+            return image, target, image_file
+
+    def __len__(self):
+        return len(self.image_files)

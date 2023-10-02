@@ -18,7 +18,7 @@ import cv2
 
 import imageutils
 from image_crop import image_crop
-from torchmetrics.classification import BinaryROC, BinaryAUROC
+from torchmetrics.classification import BinaryROC, BinaryAUROC, PrecisionRecallCurve
 import torch.nn.functional as TF
 import logging
 from PIL import Image
@@ -63,14 +63,9 @@ class PatchCore:
 
 
 def build_train_data_loader(args, config):
-    # train_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
-    #     root=args.data,
-    #     # category=args.category,
-    #     input_size=config["input_size"],
-    #     is_train=True,
-    # )
-    train_dataset = dataset.DACDataset(
+    train_dataset = dataset.SKONDataset(
         root=args.data,
+        category=args.category,
         input_size=config["input_size"],
         is_train=True,
     )
@@ -78,20 +73,15 @@ def build_train_data_loader(args, config):
         train_dataset,
         batch_size=const.BATCH_SIZE,
         shuffle=True,
-        num_workers=4,
+        num_workers=2,
         drop_last=False,
     )
 
 
 def build_test_data_loader(args, config):
-    # test_dataset = dataset.GlotecDataset( # dataset.MVTecDataset(
-    #     root=args.data,
-    #     # category=args.category,
-    #     input_size=config["input_size"],
-    #     is_train=False,
-    # )
-    test_dataset = dataset.DACDataset(
+    test_dataset = dataset.SKONDataset(
         root=args.data,
+        category=args.category,
         input_size=config["input_size"],
         is_train=False,
     )
@@ -99,7 +89,7 @@ def build_test_data_loader(args, config):
         test_dataset,
         batch_size=1, # const.BATCH_SIZE,
         shuffle=False,
-        num_workers=4,
+        num_workers=2,
         drop_last=False,
     )
 
@@ -133,7 +123,7 @@ def train_one_epoch(dataloader, model, optimizer, epoch):
     with tqdm(dataloader, 
         desc=CSI+'34m'+f"|Epoch {epoch:>3d}|"+CSI+'0m', 
         dynamic_ncols=True) as t:
-        for step, data in enumerate(t):
+        for data in t:
             # forward
             data = data.cuda()
             ret = model(data)
@@ -185,44 +175,23 @@ def eval_once(dataloader, model, crop=False):
     img_ad = []
     img_gt = []
     loss_meter = utils.AverageMeter()
-    for data, targets, imgfilename in tqdm(dataloader, desc="Eval"):
-        img = cv2.imread(imgfilename[0], 0)
-
-        if crop:
-            _crop = crop
-            l, r, w = image_crop(img[:416, :], 50)
-            if l == -1 or r == -1 or w < img.shape[1]//4:
-                _crop = False
-            cropsize = 32 * (w // 32)
-            offset = (w % 32) // 2
-            l = l + offset
-        data, targets = data.cuda(), targets.cuda()
+    for data, targets, _ in tqdm(dataloader, desc="Eval"):
+        data = data.cuda()
         with torch.no_grad():
             ret = model(data)
         outputs = ret["anomaly_map"].cpu().detach()
-        if _crop:
-            outputs = outputs[:, :, :, l//4:(l+cropsize)//4]
-            targets = targets[:, :, :, l:l+cropsize]
-        # targets = TF.interpolate(targets, outputs.shape[-2:], mode='nearest-exact')
-        targets = TF.max_pool2d(targets, kernel_size=4, stride=4)
         outputs = outputs.flatten()
-        targets = targets.flatten()
-        pix_ad.append(outputs)
-        pix_gt.append(targets)
         img_ad.append(outputs.max())
-        img_gt.append(1 if targets.max() > 0 else 0)
+        img_gt.append(targets)
         # log
         if torch.count_nonzero(targets) == 0:
             loss_meter.update(ret['loss'].item())
-    pix_ad = torch.concat(pix_ad).cpu()
-    pix_gt = torch.concat(pix_gt).cpu()
     img_ad = torch.stack(img_ad).cuda()
     img_gt = torch.tensor(img_gt).cuda()
-    pix_auroc = pix_auroc_metric(pix_ad.flatten(), pix_gt.flatten()).item()
     img_auroc = img_auroc_metric(img_ad.flatten(), img_gt.flatten()).item()
     # logger.info("pixel AUROC: {}".format(pix_auroc))
-    ret = {'auroc': pix_auroc, 'img_auroc':img_auroc, "loss": loss_meter.avg}
-    logger.info("pixel AUROC: {}, image AUROC: {}".format(ret['auroc'], ret['img_auroc']))
+    ret = {'img_auroc':img_auroc, "loss": loss_meter.avg}
+    logger.info("image AUROC: {}".format(ret['img_auroc']))
     return ret
 
 def get_threshold_from_tpr_fpr(outputs, targets, tpr_th=None, fpr_th=None):
@@ -254,117 +223,47 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     img_gt = []
     filename_list = []
     for data, target, filename in tqdm(dataloader, dynamic_ncols=True, desc="finding threshold"):
-        if '102341' in filename[0]:
-            print()
         data = data.cuda()
         with torch.no_grad():
             ret = model(data)
         output = ret["anomaly_map"].cpu().detach()
         output = 1 + output
 
-        # croping image
-        ori_img = cv2.imread(filename[0])
-        l, r, w = image_crop(ori_img, 50)
-        cropsize = (w // 32) * 32
-        l = l + ((w-cropsize) // 2)
-        l = l + 8
-        cropsize = cropsize - 16
-
         output = output.reshape(output.shape[-2], output.shape[-1])
-        # target = TF.interpolate(target, output.shape[-2:], mode='bilinear')
-        scale = int(ori_img.shape[0] / output.shape[-2])
-        # target = TF.max_pool2d(target, kernel_size=4, stride=4)
-        # target = torch.where(target > 0, 1, 0)
-        target = TF.unfold(target, kernel_size=scale, stride=scale).sum(dim=-2)
-        target = target.reshape(output.shape[-2:])
 
-        scale = ori_img.shape[0] / output.shape[-2]
-        l, r, t, b = int(l / scale), int((l+cropsize) / scale), 0, int(416 / scale)
-        output = output[t:b, l:r]
-        target = target[t:b, l:r]
-        
         outputs.append(output.flatten())
-        targets.append(target.flatten() > 0)
-        # mask = torch.logical_or(target >= 7, target == 0)
-        # outputs.append(output[mask])
-        # targets.append(target[mask] > 0)
-        img_ad.append( output.max() )
-        # img_gt.append( 0 if "good" in filename[0] else 1 )
-        img_gt.append( 1 if target.max() > 0 else 0 )
+        targets.append(target * torch.ones_like(output.flatten(), dtype=torch.int))
+        img_ad.append(output.max())
+        img_gt.append(target)
         filename_list.append(filename[0])
     outputs = torch.concat(outputs).cuda()
-    targets = torch.concat(targets).cuda().int()
+    targets = torch.concat(targets).cuda()
     img_ad = torch.stack(img_ad).cuda()
     img_gt = torch.tensor(img_gt, dtype=torch.int32).cuda()
 
-    """Get Threshold from fpr < 0.01"""
-    fpr, tpr, thresholds = roc(img_ad, img_gt)
-    threshold = thresholds[fpr < 0.01][-1].item()
-    logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
-    logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
-
-    fpr, tpr, thresholds = roc(outputs, targets)
-    pix_thr_idx = torch.where(thresholds == threshold)[0]
-    logger.info(f"Patch Level: - FPR: {fpr[pix_thr_idx].item():10.8f} - TPR: {tpr[pix_thr_idx].item():10.8f}")
-
-    """Get Threshold from Image tpr > 1"""
-    fpr, tpr, thresholds = roc(outputs, targets)
-    tpr_idx = torch.where(tpr >= 1)[0]
-    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
-    threshold = thresholds[thr_idx].item()
-    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():10.8f} - TPR: {tpr[thr_idx].item():10.8f}")
-    logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
-
-    fpr, tpr, thresholds = roc(img_ad, img_gt)
-    tpr_idx = torch.where(tpr >= 1)[0]
-    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
-    threshold = thresholds[thr_idx].item()
-    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():10.8f} - TPR: {tpr[thr_idx].item():10.8f}")
-    logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
-
-    """Get Threshold from Image fpr < 0.18"""
-    # fpr, tpr, thresholds = roc(outputs, targets)
-    # fpr_idx = torch.where(fpr <= 0.18)[0]
-    # thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
-    # threshold = thresholds[thr_idx].item()
-    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
-    # logger.info(f"Pixel AUROC: {auroc(outputs, targets)}")
-
+    # """Get Threshold from fpr < 0.01"""
     # fpr, tpr, thresholds = roc(img_ad, img_gt)
-    # fpr_idx = torch.where(fpr <= 0.18)[0]
-    # thr_idx = fpr_idx[torch.argmax(tpr[fpr_idx])]
-    # threshold = thresholds[thr_idx].item()
-    # logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():6.4f} - TPR: {tpr[thr_idx].item():6.4f}")
+    # threshold = thresholds[fpr < 0.01][-1].item()
+    # logger.info(f"Threshold: {threshold} - FPR: {fpr[fpr < 0.01][-1].item():6.4f} - TPR: {tpr[fpr < 0.01][-1].item():6.4f}")
     # logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
 
-    fpr, tpr, thresholds = roc(outputs, targets)
-    pix_thr_idx = torch.where(thresholds == threshold)[0]
-    logger.info(f"Patch Level: - FPR: {fpr[pix_thr_idx].item():10.8f} - TPR: {tpr[pix_thr_idx].item():10.8f}")
 
-    pix_fpr, pix_tpr, pix_thresholds = roc(outputs, targets)
-    img_fpr, img_tpr, img_threshold = roc(img_ad, img_gt)
+    """Get Threshold from Image tpr > 1"""
+    fpr, tpr, thresholds = roc(img_ad, img_gt)
+    tpr_idx = torch.where(tpr >= 1)[0]
+    thr_idx = tpr_idx[torch.argmin(fpr[tpr_idx])]
+    threshold = thresholds[thr_idx].item()
+    logger.info(f"Threshold: {threshold} - FPR: {fpr[thr_idx].item():10.8f} - TPR: {tpr[thr_idx].item():10.8f}")
+    logger.info(f"Image AUROC: {auroc(img_ad, img_gt)}")
 
+    pr_curve = PrecisionRecallCurve(task="binary")
+    precision, recall, thresholds = pr_curve(img_ad, img_gt)
+    a = 2 * precision * recall
+    b = precision + recall
+    f1 = torch.where(b != 0, a / b, 0)
+    threshold = thresholds[torch.argmax(f1)].item()
+    logger.info(f"Threshold : {threshold}, F1 Score : {f1.max().item()}")
 
-    logger.info(f"------- Find Positive Threshold --------")
-    tpr_idx = torch.where(pix_tpr >= 0.05)[0]
-    idx = tpr_idx[torch.argmin(pix_fpr[tpr_idx])]
-    threshold = pix_thresholds[idx].item()
-
-    logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
-    img_idx = torch.where(img_threshold == img_threshold[img_threshold <= threshold].max())[0].item()
-    logger.info(f"[Image Level] FPR : {img_fpr[img_idx]}, TPR : {img_tpr[img_idx]}, Threshold : {img_threshold[img_idx]}")
-    pos_thr = threshold
-
-    logger.info(f"------- Find Negative Threshold --------")
-    # fpr_idx = torch.where(pix_fpr == 0.0)[0]
-    # idx = fpr_idx[torch.argmax(pix_tpr[fpr_idx])]
-    tpr_idx = torch.where(pix_tpr == 1)[0]
-    idx = tpr_idx[torch.argmin(pix_fpr[tpr_idx])]
-    threshold = pix_thresholds[idx].item()
-
-    logger.info(f"[Patch Level] FPR : {pix_fpr[idx]}, TPR : {pix_tpr[idx]}, Threshold : {threshold}")
-    logger.info(f"[Patch Level] TNR : {1 - pix_fpr[idx]}, FNR : {1 - pix_tpr[idx]}, Threshold : {threshold}")
-    neg_thr = threshold
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.hist(
         img_ad[img_gt == 0].cpu().detach().numpy(),
@@ -374,8 +273,8 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
         img_ad[img_gt != 0].cpu().detach().numpy(),
         bins=100, range=(0, 1), label="defect", histtype="step", color="orange", alpha=0.7, log=True, linewidth=2
     )
-    ax.axvline(pos_thr, label="pos thr", color="magenta", alpha=0.4, linestyle="dashed")
-    ax.axvline(neg_thr, label="neg thr", color="green", alpha=0.4, linestyle="dashed")
+    # ax.axvline(pos_thr, label="pos thr", color="magenta", alpha=0.4, linestyle="dashed")
+    # ax.axvline(neg_thr, label="neg thr", color="green", alpha=0.4, linestyle="dashed")
     ax.set_title("Fastflow distribution")
     ax.set_xlabel("Probability of Abnormal")
     ax.set_ylabel("Number of Patches")
@@ -394,8 +293,8 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
         outputs[targets != 0].cpu().detach().numpy(),
         bins=100, range=(0, 1), label="defect", histtype="step", color="orange", alpha=0.7, log=True, linewidth=2
     )
-    ax.axvline(pos_thr, label="pos thr", color="magenta", alpha=0.4, linestyle="dashed")
-    ax.axvline(neg_thr, label="neg thr", color="green", alpha=0.4, linestyle="dashed")
+    # ax.axvline(pos_thr, label="pos thr", color="magenta", alpha=0.4, linestyle="dashed")
+    # ax.axvline(neg_thr, label="neg thr", color="green", alpha=0.4, linestyle="dashed")
     ax.set_title("Fastflow distribution")
     ax.set_xlabel("Probability of Abnormal")
     ax.set_ylabel("Number of Patches")
@@ -405,6 +304,9 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
     fig.savefig(os.path.join(result_path, "patch-distribution.png"))
     plt.close(fig)
 
+    save_result_images(dataloader, model, result_path, threshold)
+
+def save_result_images(dataloader, model, result_path, threshold):
     os.makedirs(os.path.join(result_path, "TP"), exist_ok=True)
     os.makedirs(os.path.join(result_path, "FP"), exist_ok=True)
     os.makedirs(os.path.join(result_path, "TN"), exist_ok=True)
@@ -427,19 +329,22 @@ def calculate_tpr_fpr_with_f1_score(dataloader, model, result_path):
             ) - boundary
         )
 
-        # croping image
+        # # croping image
         ori_img = cv2.imread(filename[0])
-        l, r, w = image_crop(ori_img, 50)
-        cropsize = (w // 32) * 32
-        l = l + ((w-cropsize) // 2)
-        l = l + 8
-        cropsize = cropsize - 16
-        ori_img = ori_img[0:416, l:l+cropsize, :]
-        outputs = outputs[0:416, l:l+cropsize]
-        boundary = boundary[0:416, l:l+cropsize]
+        ori_img = ori_img[:,:,::-1]
+        # l, r, w = image_crop(ori_img, 50)
+        # cropsize = (w // 32) * 32
+        # l = l + ((w-cropsize) // 2)
+        # l = l + 8
+        # cropsize = cropsize - 16
+        # ori_img = ori_img[0:416, l:l+cropsize, :]
+        # outputs = outputs[0:416, l:l+cropsize]
+        # boundary = boundary[0:416, l:l+cropsize]
 
         ori_img[boundary == 255] = (255, 0, 0)
-        disp = imageutils.draw_heatmap_with_colorbar_with_image(outputs, ori_img, figsize=(50,20), vrange=(0, 1))
+        disp = imageutils.draw_heatmap_with_colorbar_with_image(
+            outputs, ori_img, figsize=(40,20), vrange=(0, 1), display_axis="horizontal"
+            )
 
         savefile = "_".join(filename[0].rsplit("/", maxsplit=2)[-2:])
         ad_img = outputs.max()
@@ -706,20 +611,21 @@ def train(args):
     auroc_history = []
     img_auroc_history = []
     fig, (ax1, ax2) = plt.subplots(1,2, dpi=100, figsize=(10,10))
+    fig.tight_layout()
 
     for epoch in range(const.NUM_EPOCHS):
         loss = train_one_epoch(train_dataloader, model, optimizer, epoch)
         loss_history.append( loss )
         if (epoch + 1) % const.EVAL_INTERVAL == 0:
-            ret = eval_once(test_dataloader, model, crop=True)
+            ret = eval_once(test_dataloader, model, crop=False)
             torch.cuda.empty_cache()
             val_x.append(epoch)
-            auroc_history.append(ret['auroc'])
+            # auroc_history.append(ret['auroc'])
             img_auroc_history.append(ret['img_auroc'])
             valid_loss.append(ret['loss'])
             ax2.clear()
             ax2.set_title("AUROC on validation")
-            ax2.plot(val_x, auroc_history, 'g-', label="pixel")
+            # ax2.plot(val_x, auroc_history, 'g-', label="pixel")
             ax2.plot(val_x, img_auroc_history, 'b-', label="image")
             ax2.grid(True)
             ax2.legend()
@@ -739,7 +645,7 @@ def train(args):
         ax1.plot(loss_history, 'r-', label="train", alpha=0.6)
         ax1.grid(True)
         ax1.legend()
-        plt.savefig(os.path.join(checkpoint_dir, "training history(temp).png"))
+        fig.savefig(os.path.join(checkpoint_dir, "training history(temp).png"))
     
     plt.savefig(os.path.join(checkpoint_dir, "training history.png"))
 
@@ -755,7 +661,8 @@ def evaluate(args):
     model.load_state_dict(checkpoint["model_state_dict"])
     test_dataloader = build_test_data_loader(args, config)
     result_path = os.path.join(
-        os.path.dirname(args.checkpoint), "result"
+        os.path.dirname(os.path.dirname(args.checkpoint)),
+        args.exp_name if args.exp_name is not None else "result"
     )
     os.makedirs(result_path, exist_ok=True)
 
@@ -768,6 +675,8 @@ def evaluate(args):
     logger.info(f"Result path : {result_path}")
     device = torch.device("cuda")
     model.to(device)
+    # eval_once(test_dataloader, model)
+    # save_result_images(test_dataloader, model, result_path, threshold=0.95)
     # model.cuda()
     # eval_once(test_dataloader, model)
     # eval_once_without_ground_truth(test_dataloader, model, result_path, device)

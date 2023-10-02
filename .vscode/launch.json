@@ -110,7 +110,7 @@
                 "-cfg", "configs/CFA_wide_resnet50_2.yaml",
                 "--device", "0",
                 "--data", 
-                "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/"
+                "/home/work/.data/dac/20230714_Silver_Flat/augmentation/"
             ]
         },
         {
@@ -124,9 +124,9 @@
                 "-cfg", "configs/CFA_wide_resnet50_2.yaml",
                 "--device", "0",
                 "--data", 
-                "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/",
+                "/home/work/.data/dac/20230714_Silver_Flat/augmentation/",
                 "--eval",
-                "-ckpt", ".result/fastflow/0603_SilverFlat_CFA_feature_replicatepad/295.pt"
+                "-ckpt", ".result/fastflow/exp23/models/213.pt"
             ]
         },
         {
@@ -157,6 +157,40 @@
                 "/home/work/.data/dac/20230512_Silver_Flat/train_augmentation/",
                 "--eval",
                 "-ckpt", "result/exp8/172.pt"
+            ]
+        },
+        {
+            "name": "Python: Train skon",
+            "type": "python",
+            "request": "launch",
+            "program": "main_skon.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/wide_resnet50_2_skon.yaml",
+                "--device", "0",
+                "--category", "CRACK_1",
+                "--data", 
+                "/home/work/.data/skon/dataset",
+                "--exp_name", "230817_SKON_CRACK_1",
+            ]
+        },
+        {
+            "name": "Python: Test skon",
+            "type": "python",
+            "request": "launch",
+            "program": "main_skon.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args":[
+                "-cfg", "configs/wide_resnet50_2_skon.yaml",
+                "--device", "0",
+                "--category", "BEAD_1",
+                "--data", 
+                "/home/work/.data/skon/dataset",
+                "--eval",
+                "--exp_name", "SKON_BEAD_1_0epoch",
+                "-ckpt", ".result/fastflow/230816_SKON_BEAD_1/models/0.pt"
             ]
         },
     ]
